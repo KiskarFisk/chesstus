@@ -9,13 +9,12 @@ const CARD := Vector2(96, 136)
 const SMALL := 0.6  # others' hands, the starter and crib, the show
 const SIDES := ["White", "Black", "Yellow", "Red"]
 const PEG := [Color("#f4f0e6"), Color("#202020"), Color(1.0, 0.82, 0.15), Color(1.0, 0.3, 0.25)]
-const RED := Color(0.8, 0.1, 0.1)
 const FELT := Color("#1d4a32")
 const SHOW_WAIT := 6.0  # all-bot games: seconds to read the show before the next deal
 const C := preload("res://cribbage_rules.gd")
 
 var game: CribbageRules = C.create(Net.seats.size(), Net.game_seed)
-var font := SystemFont.new()
+var font := Cards.font()
 var picked: Array = []  # cards you've clicked to discard
 var result := ""
 var buttons := HBoxContainer.new()
@@ -23,7 +22,6 @@ var bot_busy := false
 
 
 func _ready() -> void:
-	font.font_names = PackedStringArray(["Segoe UI Symbol", "Segoe UI", "Arial", "DejaVu Sans"])
 	get_viewport().size_changed.connect(queue_redraw)
 	var layer := CanvasLayer.new()
 	layer.add_child(buttons)
@@ -262,31 +260,7 @@ func _label(pos: Vector2, text: String, col := Color.WHITE, width := 200.0, alig
 
 
 func _draw_card(r: Rect2, c: int, up := true, dim := false) -> void:
-	var box := StyleBoxFlat.new()
-	box.set_corner_radius_all(int(r.size.x * 0.08))
-	box.bg_color = Color("#fbfaf6") if up else Color("#2c4a8a")
-	box.border_color = Color(0, 0, 0, 0.5)
-	box.set_border_width_all(1)
-	draw_style_box(box, r)
-	if not up:
-		draw_rect(r.grow(-r.size.x * 0.1), Color("#5a80c8"), false, 2)
-		return
-	var col := RED if C.suit(c) in [1, 2] else Color.BLACK
-	var fs := int(r.size.x * 0.26)
-	var corner := r.position + Vector2(r.size.x * 0.08, 0)
-	draw_string(font, corner + Vector2(0, fs * 1.1), C.RANKS[C.rank(c)], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-	draw_string(font, corner + Vector2(0, fs * 2.1), C.SUITS[C.suit(c)], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-	draw_string(font, Vector2(r.position.x, r.get_center().y + r.size.x * 0.25), C.SUITS[C.suit(c)],
-		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, int(r.size.x * 0.55), col)
-	if dim:
-		draw_style_box(_shade(box), r)
-
-
-func _shade(box: StyleBoxFlat) -> StyleBoxFlat:
-	var s := box.duplicate() as StyleBoxFlat
-	s.bg_color = Color(0, 0, 0, 0.4)
-	s.set_border_width_all(0)
-	return s
+	Cards.draw(self, font, r, c, up, dim)
 
 
 ## Your cards along the bottom; ones picked for the crib sit raised.

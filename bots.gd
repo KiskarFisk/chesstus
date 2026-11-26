@@ -270,3 +270,54 @@ static func _cribbage_play_value(s: CribbageRules, m: Vector3i) -> float:
 	var gained := after.scores[t] - s.scores[t]
 	var left := s.count + CribbageRules.value(m.y)
 	return gained * 10 - (4 if left in [5, 21] else 0) + CribbageRules.value(m.y) * 0.1
+
+
+# --- Texas Hold'em ---
+
+## Easy mostly calls, sometimes folds to a big bet or makes a min raise. Medium estimates its chance of winning
+## by dealing out random opponents' cards and boards (it never looks at the real ones), then raises strong
+## hands, calls when the pot pays enough, and folds the rest. ponytail: no position, reads or bluffs.
+static func holdem_move(s: HoldemRules, seat: int, level: int) -> Vector3i:
+	if s.phase != HoldemRules.BETTING:
+		return Vector3i(seat, HoldemRules.NEXT, 0)
+	var call := s.to_call(seat)
+	var fold := Vector3i(seat, HoldemRules.FOLD, 0)
+	var check := Vector3i(seat, HoldemRules.CALL, 0)
+	var raise_min := Vector3i(seat, HoldemRules.RAISE, s.min_raise_to(seat))
+	if level <= 1:
+		var r := randf()
+		if call > s.chips[seat] / 4 and r < 0.3:
+			return fold
+		return raise_min if r > 0.9 and s.ok(raise_min) else check
+	var opponents := range(s.players).filter(func(q): return q != seat and s.live(q)).size()
+	var equity := _holdem_equity(s, seat, opponents, 120)
+	if equity > 0.7 or equity > 1.8 / (opponents + 1):
+		var to := clampi(s.high + maxi(s.min_raise, s.pot() * 3 / 4), s.min_raise_to(seat), s.bet[seat] + s.chips[seat])
+		var raise := Vector3i(seat, HoldemRules.RAISE, to)
+		if s.ok(raise):
+			return raise
+	if call == 0 or equity >= float(call) / (s.pot() + call) + 0.05:
+		return check
+	return fold
+
+
+static func _holdem_equity(s: HoldemRules, seat: int, opponents: int, sims: int) -> float:
+	var known: Array = s.hands[seat] + s.board
+	var unknown := range(52).filter(func(c): return c not in known)
+	var total := 0.0
+	for i in sims:
+		unknown.shuffle()
+		var k := 5 - s.board.size()
+		var board: Array = s.board + unknown.slice(0, k)
+		var mine := HoldemRules.score(s.hands[seat] + board)
+		var result := 1.0
+		for o in opponents:
+			var theirs := HoldemRules.score(unknown.slice(k, k + 2) + board)
+			k += 2
+			if HoldemRules._beats(theirs, mine):
+				result = 0.0
+				break
+			if not HoldemRules._beats(mine, theirs):
+				result = 0.5
+		total += result
+	return total / sims

@@ -10,8 +10,6 @@ extends RefCounted
 ##   SHOW: (seat, -1, -1) deals the next hand.
 
 const GOAL := 121
-const SUITS := ["♣", "♦", "♥", "♠"]
-const RANKS := ["", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 enum {DISCARD, PLAY, SHOW, OVER}
 
 var players := 2
@@ -67,7 +65,7 @@ static func value(c: int) -> int:
 
 
 static func card_name(c: int) -> String:
-	return RANKS[rank(c)] + SUITS[suit(c)]
+	return Cards.card_name(c)
 
 
 ## How many cards each seat puts in the crib.
@@ -267,14 +265,7 @@ func _show() -> void:
 
 
 func _deal() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = ("%d:%d" % [deal_seed, hand_no]).hash()
-	var deck := range(52)
-	for i in range(51, 0, -1):  # Fisher-Yates with our own rng, so every peer gets the same order
-		var j := rng.randi_range(0, i)
-		var tmp = deck[i]
-		deck[i] = deck[j]
-		deck[j] = tmp
+	var deck := Cards.shuffled("%d:%d" % [deal_seed, hand_no])
 	var size := 6 if players == 2 else 5
 	hands = []
 	for p in players:

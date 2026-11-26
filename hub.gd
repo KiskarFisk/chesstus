@@ -41,6 +41,14 @@ const GAMES := {
 			{"id": "teams", "name": "Teams", "seats": ["White", "Black", "Yellow", "Red"],
 				"teams": [[0, 2], [1, 3]], "armies": [0, 1, 2, 3]},
 		]},
+	"H": {"name": "Texas Hold'em", "letter": "Ho", "scene": "res://holdem.tscn", "color": Color(0.75, 0.2, 0.25),
+		"modes": [
+			{"id": "", "name": "2 players", "players": 2, "seats": ["White", "Black"], "teams": [[0], [1]], "armies": [0, 1]},
+			{"id": "", "name": "3 players", "players": 3, "seats": ["White", "Black", "Yellow"],
+				"teams": [[0], [1], [2]], "armies": [0, 1, 2]},
+			{"id": "", "name": "4 players", "players": 4, "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0], [1], [2], [3]], "armies": [0, 1, 2, 3]},
+		]},
 	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
 	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),
