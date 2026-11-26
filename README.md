@@ -8,20 +8,20 @@ Everything is drawn at runtime, except the chess pieces.
 
 | Square | Game  | Status |
 |--------|-------|--------|
-| **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material) |
+| **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported |
 
 ## Controls
 
 - **Hub:** arrow keys move your king (hold two arrows for diagonals). Black squares are walls.
-- **Chess:** click a piece, then click a dot to move. **Esc** returns both players to the hub.
+- **Chess:** click a piece, then click a dot to move. Resign or offer a draw with the buttons under the board. Once the game is over, **Back to hub** (or Esc) returns both players.
 
 ## Multiplayer
 
-Two players, peer-to-peer over ENet on **UDP port 7777**. The host plays White and the joiner plays Black.
+Two players, peer-to-peer over ENet on **UDP port 7777**. Set your name in the hub's top bar (it's remembered).
 
 1. One player clicks **Host** in the hub's top-left corner.
 2. The other enters the host's IP address and clicks **Join**.
-3. Both kings appear in the hub. When either player steps on a game square, both players go to that game.
+3. Both kings appear in the hub. When either player steps on a game square, everyone gets a popup to pick who plays which seat and vote. The game starts when everyone presses Play; one Decline cancels it.
 
 Over the internet, the host either forwards UDP 7777 on their router, or both players install [Tailscale](https://tailscale.com) and join using the host's `100.x.x.x` address. Allow Godot through Windows Firewall when asked.
 

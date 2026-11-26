@@ -34,7 +34,7 @@ func _ready() -> void:
 	col.add_child(row)
 	ui.add_child(panel)
 	for k in Hub.GAMES:
-		game_menu.add_item("%s: %s" % [k, Hub.GAMES[k].scene.get_file().get_basename().capitalize()])
+		game_menu.add_item("%s: %s" % [k, Hub.GAMES[k].name])
 	game_menu.id_pressed.connect(func(i): _paint(game_cell, Hub.GAMES.keys()[i]))
 	ui.add_child(game_menu)
 	ui.visible = false
