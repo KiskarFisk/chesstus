@@ -1,6 +1,6 @@
 # Chesstus
 
-A board game hub built in Godot 4.7. Instead of a menu, you walk a king around a giant chess board. Step onto a game square to start that game with whoever is connected.
+A board game hub built in Godot 4.7. Instead of a menu, you walk a king around a giant chess board. Step onto a game square to propose that game to everyone connected.
 
 Everything is drawn at runtime, except the chess pieces.
 
@@ -12,7 +12,7 @@ Everything is drawn at runtime, except the chess pieces.
 
 ## Controls
 
-- **Hub:** arrow keys move your king (hold two arrows for diagonals). Black squares are walls.
+- **Hub:** arrow keys move your king one square per press (hold one arrow and tap another for diagonals). Black squares are walls.
 - **Chess:** click a piece, then click a dot to move. Resign or offer a draw with the buttons under the board. Once the game is over, **Back to hub** (or Esc) returns both players.
 
 ## Multiplayer
