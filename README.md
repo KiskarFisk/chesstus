@@ -45,6 +45,9 @@ Ideas, roughly in order of how much existing code they can reuse.
 | **Backgammon** | 2 | Dice, racing your pieces home, hitting lone pieces. Brings luck to the hub |
 | **Chinese Checkers** | 2-4 | Star board, hop chains. Uses all four player colors |
 | **Four-player chess** | 4 | Modern 14x14 four-army chess (free for all with points). Shares the board shape with Superchess |
+| **Cribbage** | 2-4 | Card game scored by pegging round a board. A first card game, and the pegboard is a nice thing to draw |
+| **Texas Hold'em** | 2-4 | Poker with chips only, no real money. Hidden hands, and bluffing makes the bots interesting. Note: the whole game state goes to every player, so hands could be peeked at |
+| **Four-player Pong** | 4 | One paddle per edge, like Quoridor's four sides. Real-time, so it needs positions synced every frame instead of validated turn moves |
 
 ## Controls
 

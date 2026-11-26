@@ -45,6 +45,15 @@ const GAMES := {
 const THEMES := {
 	".": {"name": "Classic", "light": Color("#eed8b5"), "dark": Color("#b48963")},
 	"s": {"name": "Shogi", "light": Color("#ecc77f"), "dark": Color("#d9ab5c")},  # kaya wood
+	"w": {"name": "Walnut", "light": Color("#e8c9a0"), "dark": Color("#7a5230")},
+	"t": {"name": "Tournament green", "light": Color("#eeeed2"), "dark": Color("#769656")},
+	"x": {"name": "Xiangqi paper", "light": Color("#f3dfb0"), "dark": Color("#e2c27f")},
+	"r": {"name": "Checkers red", "light": Color("#e8d0a8"), "dark": Color("#a83a32")},
+	"g": {"name": "Go board", "light": Color("#e3b765"), "dark": Color("#d4a24c")},
+	"m": {"name": "Marble", "light": Color("#f0f0ee"), "dark": Color("#9aa0a6")},
+	"n": {"name": "Night", "light": Color("#5b6b8c"), "dark": Color("#2e3850")},
+	"i": {"name": "Ice", "light": Color("#e6f2f8"), "dark": Color("#9cc3d5")},
+	"z": {"name": "Neon", "light": Color("#2a1a3a"), "dark": Color("#ff3fa4")},
 }
 
 # Live copies of the layout; static so map editor changes survive scene reloads this session.
