@@ -12,6 +12,34 @@ Everything is drawn at runtime, except the chess pieces.
 | **B**  | Baby Chess | 5x5, each side: 5 pawns, rook, knight, bishop, queen, king. Orthodox rules: castling (king two squares toward the rook), en passant, pawn double step when the path is clear. Shows as **C** on the hub |
 | **S**  | Superchess | 4 armies; modes picked in the vote popup: **2 players** (light vs dark, move any piece of either army; stalemate draws), **3 players** (one person runs the light team), **4 players (teams)** (White + Yellow vs Black + Red, clockwise), **Free for all** (house rule: mated armies leave, last king wins). [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 
+## Future games
+
+Ideas, roughly in order of how much existing code they can reuse.
+
+| Game | Players | Why it fits |
+|------|---------|-------------|
+| **Chess960** | 2 | Chess with a shuffled back rank. `ChessRules` already castles toward whichever rook is there, so it's mostly a random FEN |
+| **Crazyhouse** | 2 | Captured pieces swap sides and can be dropped back in. Chess rules plus a drop move |
+| **Bughouse** | 4 | Two chess boards, teammates hand each other captured pieces. Fills all four seats with plain chess |
+| **Atomic Chess** | 2 | Captures explode, wiping out every non-pawn piece next to them. Blow up the king to win |
+| **Horde** | 2 | Black's normal army against 36 white pawns. A different starting FEN plus a win rule |
+| **Capablanca Chess** | 2 | 10x8 board with two new pieces: the archbishop (bishop + knight) and the chancellor (rook + knight) |
+| **Chad** | 2 | Christian Freeling's 12x12 variant: each side has just a king and eight rooks. The king can't leave its 3x3 castle, and rooks become queens inside the enemy's castle |
+| **Hexagonal Chess** | 2 | Gliński's chess on a 91-cell hex board. A fresh board shape to draw |
+| **Shogi** | 2 | Japanese chess on 9x9 with drops and promotion zones. The hub already has a Shogi board theme waiting for it |
+| **Minishogi** | 2 | Shogi on 5x5, one of each piece. The Baby Chess of shogi, and a good first step |
+| **Judkins Shogi** | 2 | 6x6, adds a knight to Minishogi's army |
+| **Tori Shogi** | 2 | 7x7 shogi where every piece is a bird (phoenix, falcon, cranes, swallows). Same drop rules, new moves |
+| **Chu Shogi** | 2 | 12x12, 46 pieces each and no drops. Its lion moves twice in one turn |
+| **Dai Shogi** | 2 | 15x15 ancestor of Chu Shogi, 65 pieces each |
+| **Tenjiku Shogi** | 2 | 16x16 with pieces that jump over whole lines of others. Long, wild games |
+| **Xiangqi** | 2 | Chinese chess: river, palace, cannons that jump to capture |
+| **Checkers** | 2 | Simple rules, forced captures and multi-jumps. A good first game outside the chess family |
+| **Go** | 2 | 9x9 or 13x13; capture by surrounding. Needs territory scoring at the end |
+| **Reversi** | 2 | Flip discs by flanking them. Tiny rules, easy bot |
+| **Chinese Checkers** | 2-4 | Star board, hop chains. Uses all four player colors |
+| **Four-player chess** | 4 | Modern 14x14 four-army chess (free for all with points). Shares the board shape with Superchess |
+
 ## Controls
 
 - **Hub:** arrow keys move your king one square per press (hold one arrow and tap another for diagonals). Black squares are walls.
