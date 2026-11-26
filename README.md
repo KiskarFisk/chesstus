@@ -8,12 +8,13 @@ Everything is drawn at runtime, except the chess pieces.
 
 | Square | Game  | Status |
 |--------|-------|--------|
-| **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported |
+| **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported. Pick **Fischer Random** in the vote popup for a shuffled back rank (one of the 960 starts, the same for both players); castle by moving the king onto its rook |
+| **Z**  | Crazyhouse | Chess where captured pieces join your hand and can be dropped on any empty square instead of moving (pawns not on the first or last rank). Promoted pieces go back to hand as pawns. Shows as **C** on the hub; not on the hub map yet |
 | **B**  | Baby Chess | 5x5, each side: 5 pawns, rook, knight, bishop, queen, king. Orthodox rules: castling (king two squares toward the rook), en passant, pawn double step when the path is clear. Shows as **C** on the hub |
 | **S**  | Superchess | 4 armies; modes picked in the vote popup: **2 players** (light vs dark, move any piece of either army; stalemate draws), **3 players** (one person runs the light team), **4 players (teams)** (White + Yellow vs Black + Red, clockwise), **Free for all** (house rule: mated armies leave, last king wins). [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 | **J**  | Shogi | Full rules: drops, optional promotion (a popup asks; forced when the piece would be stuck), no two pawns on a file, no checkmate by pawn drop. No repetition or impasse rules yet. Kanji pieces, captured pieces wait on each side's stand. Shows as **S** on the hub |
 | **M**  | Minishogi | Shogi on 5x5 with one of each piece and a one-rank promotion zone. Shows as **S** on the hub |
-| **Q**  | Quoridor | 9x9, 2 players, 10 walls each. Full rules: straight and diagonal jumps, and no wall may cut a pawn off its goal. Easy and Medium bots. No 4-player mode yet |
+| **Q**  | Quoridor | 9x9, 2 players with 10 walls each, or 4 with 5 each (pick in the vote popup; the 4 start on all four edges and take turns clockwise). Full rules: straight and diagonal jumps, no jumping two pawns, and no wall may cut a pawn off its goal. With 4 players, whoever resigns leaves and the rest play on. Easy and Medium bots |
 
 ## Future games
 
@@ -21,9 +22,7 @@ Ideas, roughly in order of how much existing code they can reuse.
 
 | Game | Players | Why it fits |
 |------|---------|-------------|
-| **Chess960** | 2 | Chess with a shuffled back rank. `ChessRules` already castles toward whichever rook is there, so it's mostly a random FEN |
-| **Crazyhouse** | 2 | Captured pieces swap sides and can be dropped back in. Chess rules plus a drop move |
-| **Bughouse** | 4 | Two chess boards, teammates hand each other captured pieces. Fills all four seats with plain chess |
+| **Bughouse** | 4 | Two Crazyhouse boards, teammates hand each other captured pieces. Fills all four seats; the drop rules are already in `ChessRules` |
 | **Atomic Chess** | 2 | Captures explode, wiping out every non-pawn piece next to them. Blow up the king to win |
 | **Horde** | 2 | Black's normal army against 36 white pawns. A different starting FEN plus a win rule |
 | **Capablanca Chess** | 2 | 10x8 board with two new pieces: the archbishop (bishop + knight) and the chancellor (rook + knight) |
@@ -51,6 +50,7 @@ Ideas, roughly in order of how much existing code they can reuse.
 
 - **Hub:** arrow keys move your king one square per press (hold one arrow and tap another for diagonals). Black squares are walls.
 - **Chess:** click a piece, then click a dot to move. Resign or offer a draw with the buttons under the board. Once the game is over, **Back to hub** (or Esc) returns both players.
+- **Crazyhouse:** same as chess. Click a piece in your hand (right of the board), then a square to drop it.
 - **Shogi:** same as chess. Click a piece on your stand to drop it.
 - **Quoridor:** click a dot to move your pawn. Hover a groove between squares to preview a wall, then click to place it.
 
@@ -76,15 +76,19 @@ Any seat can be a bot: pick **Bot (Easy)** or **Bot (Medium)** in the seat dropd
 | `hub_map.gd` | Hub layout (`#` wall, `.` floor, `K` spawn, letters = games). Edit by hand or with the map editor |
 | `map_editor.gd` | In-game map editor: press **F1** in the hub. Only available when running from the Godot editor, offline |
 | `net.gd` | `Net` autoload: host/join, scene changes for both players, hub king positions |
-| `chess_rules.gd` | `ChessRules`: chess position and legal move generation for any n x n board (chess, Baby Chess), no UI |
+| `chess_rules.gd` | `ChessRules`: chess position and legal move generation for any n x n board (chess, Baby Chess), plus Fischer Random castling and Crazyhouse drops, no UI |
 | `chess.gd` / `chess.tscn` | Chess board UI. Moves are RPCs that each side checks for turn and legality |
 | `babychess.tscn` | Baby Chess: the chess scene with the 5x5 starting position (`ChessRules.BABY`) |
+| `crazyhouse.tscn` | Crazyhouse: the chess scene with a FEN that has a hand (`ChessRules.HOUSE`) |
+| `quoridor_rules.gd` / `quoridor.gd` / `quoridor.tscn` | Quoridor rules (`QuoridorRules`, 2 or 4 players) and board UI |
+| `test_quoridor_rules.gd` | Quoridor checks: jumps, wall overlap and path blocking, 4 player turns and resigning, bots |
+| `test_variants.gd` | Fischer Random (start positions, castling) and Crazyhouse (hands, drops, drop mate) checks |
 | `shogi_rules.gd` / `shogi.gd` / `shogi.tscn` | Shogi rules (`ShogiRules`, any n x n board) and board UI |
 | `minishogi.tscn` | Minishogi: the shogi scene with the 5x5 starting position (`ShogiRules.MINI`) |
 | `superchess_rules.gd` / `superchess.gd` / `superchess.tscn` | Superchess rules (`SuperchessRules`) and board UI |
 | `test_chess_rules.gd` | Checks move generation against known move counts for standard test positions (perft) |
 | `test_superchess_rules.gd` | Rule checks for Superchess (point pawns, hole, castling swap, partner check, mates, promotion, en passant) |
-| `bots.gd` | Bot move pickers (`Bots`) for chess, Superchess and shogi, run on a worker thread via `Net.think` |
+| `bots.gd` | Bot move pickers (`Bots`) for chess (and its variants), Superchess, shogi and Quoridor, run on a worker thread via `Net.think` |
 | `test_bots.gd` | Bot sanity checks (finds mate in one, takes free pieces, won't hang its queen, speed) |
 | `test_shogi_rules.gd` | Shogi and Minishogi perft counts plus drop, promotion, nifu and uchifuzume checks |
 | `pieces/` | Chess piece SVGs |
@@ -100,7 +104,7 @@ Send moves through an `@rpc("any_peer", "call_local", "reliable")` function that
 ## Tests
 
 ```sh
-godot --headless --path . -s test_chess_rules.gd  # also test_superchess_rules.gd, test_shogi_rules.gd, test_bots.gd
+godot --headless --path . -s test_chess_rules.gd  # also test_superchess_rules.gd, test_shogi_rules.gd, test_bots.gd, test_quoridor_rules.gd, test_variants.gd
 ```
 
 Prints `PASS` and exits 0 if the move counts match.

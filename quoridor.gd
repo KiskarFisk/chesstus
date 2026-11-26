@@ -1,17 +1,18 @@
 extends Node2D
-## Quoridor board. Net.seats = [White peer id, Black peer id]; offline both are you. White starts at the bottom.
+## Quoridor board. Net.seats = one peer id per side (2 or 4); offline all are you. White starts at the bottom,
+## the others clockwise from it (2 players: Black at the top).
 ## On your turn, dots mark where your pawn can go; hover a groove to preview a wall, click to place it.
-## The game can only be left once it's over (someone reached the far row, or resigned).
+## The game can only be left once it's over (someone reached the far side, or everyone else resigned).
 
 const CELL := 60
 const GAP := 14  # groove width, where walls go
 const P := CELL + GAP  # cell pitch
 const FRAME := 16
-const SIDES := ["White", "Black"]
-const PAWN := [Color("#f4f0e6"), Color("#202020")]
+const SIDES := ["White", "Black", "Yellow", "Red"]
+const PAWN := [Color("#f4f0e6"), Color("#202020"), Color(1.0, 0.82, 0.15), Color(1.0, 0.3, 0.25)]
 const NO_WALL := Vector3i(-1, -1, -1)
 
-var game := QuoridorRules.new()
+var game := QuoridorRules.create(Net.seats.size())
 var targets: Array[Vector3i] = []  # your pawn's moves, shown while it's your turn
 var hover := NO_WALL  # legal wall under the mouse
 var last_move := NO_WALL
@@ -55,7 +56,7 @@ func _refresh() -> void:
 		b.queue_free()
 	if result or Net.watching_bots():
 		_button("Back to hub", func(): Net.end_game())
-	elif _side_of(multiplayer.get_unique_id()) != -1:
+	elif _side_of(multiplayer.get_unique_id()) not in [-1] + game.resigned:
 		_button("Resign", func(): Net.send(_resign))
 	targets = game.steps() if _mine() else []
 	hover = NO_WALL
@@ -104,10 +105,12 @@ func _draw() -> void:
 			draw_rect(_cell(c), col)
 	for t in targets:
 		draw_circle(_cell(Vector2i(t.x, t.y)).get_center(), 10, Color(0, 0, 0, 0.3))
-	for side in 2:
+	for side in game.pawns.size():
+		_draw_supply(side)
+		if side in game.resigned:
+			continue
 		draw_circle(_cell(game.pawns[side]).get_center(), CELL * 0.34, PAWN[side])
 		draw_arc(_cell(game.pawns[side]).get_center(), CELL * 0.34, 0, TAU, 32, Color.BLACK, 2, true)
-		_draw_supply(side)
 	for kind in [QuoridorRules.H, QuoridorRules.V]:
 		for w in (game.h if kind == QuoridorRules.H else game.v):
 			var m := Vector3i(w.x, w.y, kind)
@@ -120,13 +123,18 @@ func _draw() -> void:
 	draw_string(ThemeDB.fallback_font, o + Vector2(0, -FRAME - 10), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 
 
-## A side's unplaced walls standing in a row: White's right of the board at the bottom, Black's left at the top.
+## A side's unplaced walls standing in a row, in the board corner clockwise of its start: the bottom side's
+## right of the board at the bottom, the left side's left at the bottom, top's top left, right's top right.
 func _draw_supply(side: int) -> void:
 	var o := _origin()
 	var tall := 2 * CELL + GAP
+	var home: int = game.homes[side]
+	var right := home in [QuoridorRules.BOTTOM, QuoridorRules.RIGHT]
+	var low := home in [QuoridorRules.BOTTOM, QuoridorRules.LEFT]
 	for i in game.walls_left[side]:
-		var pos := o + (Vector2(_size() + FRAME + 24 + i * (GAP + 8), _size() - tall) if side == 0
-			else Vector2(-FRAME - 24 - GAP - i * (GAP + 8), 0))
+		var x: float = _size() + FRAME + 24 + i * (GAP + 8) if right else -FRAME - 24 - GAP - i * (GAP + 8)
+		var y: float = _size() - tall if low else 0.0
+		var pos := o + Vector2(x, y)
 		draw_rect(Rect2(pos, Vector2(GAP, tall)), Color("#f2d9a2"))
 		draw_rect(Rect2(pos, Vector2(GAP, tall)), PAWN[side], false, 2)
 
@@ -153,7 +161,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			hover = w
 			queue_redraw()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and _mine():
-		var pos := make_input_local(event).position
+		var pos: Vector2 = make_input_local(event).position
 		var c := _cell_at(pos)
 		var step := Vector3i(c.x, c.y, QuoridorRules.STEP)
 		if step in targets:
@@ -207,7 +215,9 @@ func _move(m: Vector3i) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _resign() -> void:
 	var side := _side_of(multiplayer.get_remote_sender_id())
-	if result or side == -1:
+	if result or side == -1 or side in game.resigned:
 		return
-	result = "%s resigns. %s wins" % [_who(side), _who(1 - side)]
+	game = game.resign(side)  # 4 players: the others play on
+	if game.winner() != -1:
+		result = "%s resigns. %s wins" % [_who(side), _who(game.winner())]
 	_refresh()

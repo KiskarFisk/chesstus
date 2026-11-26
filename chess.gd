@@ -6,12 +6,14 @@ const TILE := 64
 const FRAME := 16  # wooden border around the board; black beyond it
 const SIDES := ["White", "Black"]
 const VALUES := {"Q": 9, "R": 5, "B": 3, "N": 3, "P": 1}
+const NONE := -99  # nothing selected (squares are >= 0, drop codes -1..-5)
+const SLOT := 48  # width of a hand slot (Crazyhouse)
 ## Starting position; the scene sets it (babychess.tscn uses ChessRules.BABY). Board size comes from it.
 @export var fen := ChessRules.START
 
 var game: ChessRules
 var start_count := {}  # piece type -> how many each side starts with, for the captured-pieces display
-var selected := -1
+var selected := NONE  # board square, or a drop code (from of a drop move) while a Crazyhouse hand piece is picked
 var targets: Array = []
 var textures := {}
 var result := ""      # non-empty once the game is over
@@ -24,7 +26,7 @@ var bot_busy := false  # host: a bot is thinking
 
 
 func _ready() -> void:
-	game = ChessRules.from_fen(fen)
+	game = ChessRules.from_fen(ChessRules.fischer(Net.game_seed) if Net.game_mode == "frc" else fen)
 	for t in VALUES:
 		start_count[t] = game.board.count("w" + t)
 	for c in "wb":
@@ -130,7 +132,11 @@ func _draw() -> void:
 		var tex: Texture2D = textures[game.board[selected]]
 		draw_texture(tex, drag_pos - tex.get_size() / 2)
 	var font := ThemeDB.fallback_font
-	_draw_captures(font, o)
+	if game.hands.is_empty():
+		_draw_captures(font, o)
+	else:
+		for side in ["w", "b"]:
+			_draw_hand(side, font)
 	var lines := _status().split("\n")
 	for i in lines.size():
 		draw_string(font, o + Vector2(0, -FRAME - 10 - 26 * (lines.size() - 1 - i)), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
@@ -178,6 +184,40 @@ func _draw_captures(font: Font, o: Vector2) -> void:
 			draw_string(font, pos + Vector2(x + 4, 23), "+%d" % lead, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.BLACK)
 
 
+## Crazyhouse: a side's hand right of the board, where captures show in chess (Black's at the top, White's
+## at the bottom). One slot per kind held, in DROPS order, with a count when there's more than one.
+func _draw_hand(side: String, font: Font) -> void:
+	draw_rect(_slot(side, 0).merge(_slot(side, ChessRules.DROPS.size() - 1)).grow(4), Color(0.62, 0.6, 0.57))
+	var held := _held(side)
+	for j in held.size():
+		var kind: String = held[j]
+		var count: int = game.hands[side][kind]
+		var r := _slot(side, j)
+		if selected == -1 - ChessRules.DROPS.find(kind) and game.turn == side:
+			draw_rect(r, Color(1, 1, 0, 0.5))
+		draw_texture_rect(textures[side + kind], Rect2(r.position, Vector2(36, 36)), false)
+		if count > 1:
+			draw_string(font, r.position + Vector2(34, 32), str(count), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.BLACK)
+
+
+func _slot(side: String, j: int) -> Rect2:
+	var y := TILE * game.n - 40 if side == "w" else 4
+	return Rect2(_origin() + Vector2(TILE * game.n + FRAME + 14 + j * SLOT, y), Vector2(SLOT - 4, 36))
+
+
+func _held(side: String) -> Array:
+	return ChessRules.DROPS.filter(func(k): return game.hands[side].has(k))
+
+
+## The drop code under pos in the side to move's hand, or NONE.
+func _hand_at(pos: Vector2) -> int:
+	var held := _held(game.turn)
+	for j in held.size():
+		if _slot(game.turn, j).has_point(pos):
+			return -1 - ChessRules.DROPS.find(held[j])
+	return NONE
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and (result or Net.watching_bots()):
 		Net.end_game()
@@ -195,14 +235,19 @@ func _unhandled_input(event: InputEvent) -> void:
 					Net.send(_move, Vector2i(selected, sq))
 				queue_redraw()
 			return
+		var mine: bool = Net.seats[_turn()] == multiplayer.get_unique_id()
+		var drop := _hand_at(drag_pos) if mine and not game.hands.is_empty() else NONE
 		if sq in targets:
 			Net.send(_move, Vector2i(selected, sq))
-		elif sq != -1 and game.board[sq].begins_with(game.turn) and Net.seats[_turn()] == multiplayer.get_unique_id():
+		elif drop != NONE:  # click a hand piece, then a square; no dragging from the hand
+			selected = drop
+			targets = game.legal_moves().filter(func(m): return m.x == drop).map(func(m): return m.y)
+		elif sq != -1 and game.board[sq].begins_with(game.turn) and mine:
 			selected = sq
 			targets = game.legal_moves().filter(func(m): return m.x == sq).map(func(m): return m.y)
 			dragging = true
 		else:
-			selected = -1
+			selected = NONE
 			targets = []
 		queue_redraw()
 
@@ -213,8 +258,10 @@ func _square_at(pos: Vector2) -> int:
 
 
 ## Target square holds an enemy piece, or is an en passant capture (pawn moving diagonally onto an empty square).
+## (Fischer Random castling targets your own rook: not a capture.)
 func _is_capture(sq: int) -> bool:
-	return game.board[sq] != "" or (game.board[selected][1] == "P" and sq % game.n != selected % game.n)
+	return game.board[sq].begins_with(game.opponent()) \
+		or (selected >= 0 and game.board[selected][1] == "P" and sq % game.n != selected % game.n)
 
 
 # --- RPCs: sent with _send to everyone in the game. Senders are untrusted, so each checks seat, turn and state. ---
@@ -228,7 +275,7 @@ func _move(m: Vector2i) -> void:
 	draw_offer = -1  # a move answers any pending offer
 	if game.legal_moves().is_empty():
 		result = ("Checkmate! %s wins" % _who(1 - _turn())) if game.in_check() else "Stalemate - draw"
-	selected = -1
+	selected = NONE
 	targets = []
 	_refresh()
 

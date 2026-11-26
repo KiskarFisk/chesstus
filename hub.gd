@@ -8,6 +8,11 @@ const LABEL_FADE := 0.35  # seconds to fade a name fully in or out
 # family it belongs to (Superchess is a chess game, so C). seats: one per side; teams: seats playing together.
 const GAMES := {
 	"C": {"name": "Chess", "letter": "C", "scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95),
+		"modes": [
+			{"id": "", "name": "Standard", "seats": ["White", "Black"], "teams": [[0], [1]], "armies": [0, 1]},
+			{"id": "frc", "name": "Fischer Random", "seats": ["White", "Black"], "teams": [[0], [1]], "armies": [0, 1]},
+		]},
+	"Z": {"name": "Crazyhouse", "letter": "C", "scene": "res://crazyhouse.tscn", "color": Color(0.9, 0.35, 0.55),
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
 	"B": {"name": "Baby Chess", "letter": "C", "scene": "res://babychess.tscn", "color": Color(0.35, 0.75, 0.5),
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
@@ -16,7 +21,11 @@ const GAMES := {
 	"M": {"name": "Minishogi", "letter": "S", "scene": "res://minishogi.tscn", "color": Color(0.8, 0.3, 0.2),
 		"seats": ["Sente", "Gote"], "teams": [[0], [1]]},
 	"Q": {"name": "Quoridor", "letter": "Q", "scene": "res://quoridor.tscn", "color": Color(0.3, 0.65, 0.7),
-		"seats": ["White", "Black"], "teams": [[0], [1]]},
+		"modes": [
+			{"id": "", "name": "2 players", "players": 2, "seats": ["White", "Black"], "teams": [[0], [1]], "armies": [0, 1]},
+			{"id": "", "name": "4 players", "players": 4, "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0], [1], [2], [3]], "armies": [0, 1, 2, 3]},
+		]},
 	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
 	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),

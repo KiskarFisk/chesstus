@@ -62,6 +62,9 @@ static func _chess_eval(s: ChessRules) -> int:
 		elif p[1] in "NB":
 			v -= (absi(2 * x - n + 1) + absi(2 * y - n + 1)) * 3
 		score += v if p[0] == "w" else -v
+	for side in s.hands:  # Crazyhouse: pieces in hand count like pieces on the board
+		for k in s.hands[side]:
+			score += VALUE[k] * s.hands[side][k] * (1 if side == "w" else -1)
 	return score
 
 
@@ -115,16 +118,23 @@ static func _superchess_eval(s: SuperchessRules, me: String) -> float:
 # --- Quoridor ---
 
 ## Easy walks a shortest path and now and then drops a random wall. Medium plays the move that most
-## widens (their path - my path), stepping unless a wall strictly beats it. ponytail: 1 ply, add a
-## reply search if Medium is too easy to wall in.
+## widens (closest rival's path - my path), stepping unless a wall strictly beats it. ponytail: 1 ply,
+## add a reply search if Medium is too easy to wall in.
 static func quoridor_move(s: QuoridorRules, level: int) -> Vector3i:
 	var me := s.turn
 	var steps := s.steps()
 	steps.shuffle()
 	var score := func(m: Vector3i) -> int:
 		var after := s.play(m)
-		return MATE if after.winner() == me else after.distance(1 - me) - after.distance(me)
-	var best := steps[0]
+		if after.winner() == me:
+			return MATE
+		var rival := MATE
+		for o in after.pawns.size():
+			if o != me and o not in after.resigned:
+				rival = mini(rival, after.distance(o))
+		return rival - after.distance(me)
+	# ponytail: a pawn boxed in by pawns and walls can have no step; assumes it still has a wall to place
+	var best := steps[0] if not steps.is_empty() else s.moves()[0]
 	for m in steps:
 		if score.call(m) > score.call(best):
 			best = m

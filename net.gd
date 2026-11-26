@@ -5,7 +5,7 @@ extends Node
 const PORT := 7777
 const MAX_PLAYERS := 4
 const SCENES := ["res://hub.tscn", "res://chess.tscn", "res://babychess.tscn", "res://superchess.tscn",
-	"res://shogi.tscn", "res://minishogi.tscn", "res://quoridor.tscn"]
+	"res://shogi.tscn", "res://minishogi.tscn", "res://quoridor.tscn", "res://crazyhouse.tscn"]
 const HUB := "res://hub.tscn"
 const SETTINGS := "user://settings.cfg"
 const MAX_NAME := 16
@@ -32,6 +32,7 @@ var colors := {}  # peer id -> PLAYER_COLORS index
 var proposal := {}
 var seats: Array = [1, 1]  # who plays each army of the running game (offline: you play every army)
 var game_mode := ""  # id of the mode picked in the vote, e.g. Superchess "2p" / "teams" / "ffa"
+var game_seed := 0  # random number picked by the host for each game, the same on every peer (Fischer Random start)
 var in_game: Array = []  # peers in the running game (players + spectators); empty while in the hub
 var my_name := "Player"
 var names := {}  # peer id -> display name, host-owned
@@ -228,7 +229,7 @@ func vote(yes: bool) -> void:
 	if proposal.players.all(func(p): return proposal.votes.has(p)):
 		var mode := proposal_mode()
 		var armies: Array = mode.armies.map(func(seat): return proposal.seats[seat])  # seat ids -> per army
-		_start.rpc(armies, proposal.players, _hub().GAMES[proposal.game].scene, mode.id)
+		_start.rpc(armies, proposal.players, _hub().GAMES[proposal.game].scene, mode.id, randi())
 	else:
 		_publish(proposal)
 
@@ -246,7 +247,8 @@ func _set_proposal(p: Dictionary, msg: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _start(s: Array, players: Array, scene: String, mode_id: String) -> void:
+func _start(s: Array, players: Array, scene: String, mode_id: String, seed: int) -> void:
+	game_seed = seed
 	seats = s
 	game_mode = mode_id
 	in_game = players
