@@ -13,6 +13,7 @@ Everything is drawn at runtime, except the chess pieces.
 | **S**  | Superchess | 4 armies; modes picked in the vote popup: **2 players** (light vs dark, move any piece of either army; stalemate draws), **3 players** (one person runs the light team), **4 players (teams)** (White + Yellow vs Black + Red, clockwise), **Free for all** (house rule: mated armies leave, last king wins). [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 | **J**  | Shogi | Full rules: drops, optional promotion (a popup asks; forced when the piece would be stuck), no two pawns on a file, no checkmate by pawn drop. No repetition or impasse rules yet. Kanji pieces, captured pieces wait on each side's stand. Shows as **S** on the hub |
 | **M**  | Minishogi | Shogi on 5x5 with one of each piece and a one-rank promotion zone. Shows as **S** on the hub |
+| **Q**  | Quoridor | 9x9, 2 players, 10 walls each. Full rules: straight and diagonal jumps, and no wall may cut a pawn off its goal. Easy and Medium bots. No 4-player mode yet |
 
 ## Future games
 
@@ -43,7 +44,6 @@ Ideas, roughly in order of how much existing code they can reuse.
 | **Reversi** | 2 | Flip discs by flanking them. Tiny rules, easy bot |
 | **Mancala (Oware)** | 2 | Sow seeds around a ring of pits and capture by landing in the right count. A new board shape, tiny rules |
 | **Backgammon** | 2 | Dice, racing your pieces home, hitting lone pieces. Brings luck to the hub |
-| **Quoridor** | 2 or 4 | Walk your pawn to the far side while placing walls that block the others. Uses all four colors |
 | **Chinese Checkers** | 2-4 | Star board, hop chains. Uses all four player colors |
 | **Four-player chess** | 4 | Modern 14x14 four-army chess (free for all with points). Shares the board shape with Superchess |
 
@@ -52,6 +52,7 @@ Ideas, roughly in order of how much existing code they can reuse.
 - **Hub:** arrow keys move your king one square per press (hold one arrow and tap another for diagonals). Black squares are walls.
 - **Chess:** click a piece, then click a dot to move. Resign or offer a draw with the buttons under the board. Once the game is over, **Back to hub** (or Esc) returns both players.
 - **Shogi:** same as chess. Click a piece on your stand to drop it.
+- **Quoridor:** click a dot to move your pawn. Hover a groove between squares to preview a wall, then click to place it.
 
 ## Multiplayer
 

@@ -112,6 +112,37 @@ static func _superchess_eval(s: SuperchessRules, me: String) -> float:
 	return score
 
 
+# --- Quoridor ---
+
+## Easy walks a shortest path and now and then drops a random wall. Medium plays the move that most
+## widens (their path - my path), stepping unless a wall strictly beats it. ponytail: 1 ply, add a
+## reply search if Medium is too easy to wall in.
+static func quoridor_move(s: QuoridorRules, level: int) -> Vector3i:
+	var me := s.turn
+	var steps := s.steps()
+	steps.shuffle()
+	var score := func(m: Vector3i) -> int:
+		var after := s.play(m)
+		return MATE if after.winner() == me else after.distance(1 - me) - after.distance(me)
+	var best := steps[0]
+	for m in steps:
+		if score.call(m) > score.call(best):
+			best = m
+	if s.walls_left[me] == 0 or score.call(best) == MATE:
+		return best
+	var walls := s.moves().slice(steps.size())
+	if level <= 1:
+		return walls.pick_random() if randf() < 0.15 and not walls.is_empty() else best
+	var best_score: int = score.call(best)
+	walls.shuffle()
+	for m in walls:
+		var sc: int = score.call(m)
+		if sc > best_score:
+			best = m
+			best_score = sc
+	return best
+
+
 # --- Shogi ---
 
 const SHOGI_VALUE := {"P": 100, "L": 300, "N": 350, "S": 500, "G": 550, "B": 800, "R": 1000, "K": 0,
