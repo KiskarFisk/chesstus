@@ -31,7 +31,24 @@ const SETUP := {
 	"r": {"K": ["c3"], "Q": ["d4"], "R": ["d1", "a4"], "B": ["d3", "c4"], "N": ["d2", "b4"],
 		"Pr": ["e1", "e2", "e3", "e4"], "Pu": ["a5", "b5", "c5", "d5"], "Pru": ["e5"]},
 }
+# Four-player chess (four = true): the modern 14x14 board with 3x3 corners cut and no hole. Each army's back
+# rank is the middle 8 squares of its edge, queen on its own left of the king (seen from its side), pawns
+# march straight across and promote on reaching the middle (their 8th rank). Free for all scores points.
+const SETUP_FOUR := {
+	"w": {"R": ["d1", "k1"], "N": ["e1", "j1"], "B": ["f1", "i1"], "Q": ["g1"], "K": ["h1"],
+		"Pu": ["d2", "e2", "f2", "g2", "h2", "i2", "j2", "k2"]},
+	"b": {"R": ["a11", "a4"], "N": ["a10", "a5"], "B": ["a9", "a6"], "Q": ["a8"], "K": ["a7"],
+		"Pr": ["b4", "b5", "b6", "b7", "b8", "b9", "b10", "b11"]},
+	"y": {"R": ["d14", "k14"], "N": ["e14", "j14"], "B": ["f14", "i14"], "K": ["g14"], "Q": ["h14"],
+		"Pd": ["d13", "e13", "f13", "g13", "h13", "i13", "j13", "k13"]},
+	"r": {"R": ["n11", "n4"], "N": ["n10", "n5"], "B": ["n9", "n6"], "K": ["n8"], "Q": ["n7"],
+		"Pl": ["m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11"]},
+}
+const POINTS := {"P": 1, "N": 3, "B": 5, "R": 5, "Q": 9, "K": 20}  # free for all; a promoted queen ("Q*") is 1
 
+var four := false
+var points := {"w": 0, "b": 0, "y": 0, "r": 0}
+var last_mover := ""  # army that made the latest move: credited with any checkmate it caused
 var mode := "teams"
 var board: Array = []
 var turn := 0  # index into COLORS (in "2p" only 0 or 1)
@@ -42,15 +59,17 @@ var result := ""  # non-empty when the game is over
 var events: Array = []  # what happened automatically during the last move (mates, passes)
 
 
-static func start(game_mode := "teams") -> SuperchessRules:
+static func start(game_mode := "teams", is_four := false) -> SuperchessRules:
 	var s := SuperchessRules.new()
 	s.mode = game_mode
+	s.four = is_four
 	s.board.resize(N * N)
 	s.board.fill("")
-	for c in SETUP:
+	var setup: Dictionary = SETUP_FOUR if is_four else SETUP
+	for c in setup:
 		s.pawn_starts[c] = []
-		for kind in SETUP[c]:
-			for name in SETUP[c][kind]:
+		for kind in setup[c]:
+			for name in setup[c][kind]:
 				var sq := sq_of(name)
 				s.board[sq] = c + kind
 				if kind == "R":
@@ -72,9 +91,11 @@ static func partner(color: String) -> String:
 	return {"w": "y", "y": "w", "b": "r", "r": "b"}[color]
 
 
-static func playable(c: Vector2i) -> bool:
+static func playable(c: Vector2i, is_four := false) -> bool:
 	if c.x < 0 or c.y < 0 or c.x >= N or c.y >= N:
 		return false
+	if is_four:  # 3x3 cut from each corner
+		return not ((c.x < 3 or c.x > 10) and (c.y < 3 or c.y > 10))
 	if c.x >= 5 and c.x <= 8 and c.y >= 5 and c.y <= 8:
 		return false  # center hole
 	var cx := mini(c.x, N - 1 - c.x)
@@ -157,6 +178,8 @@ func play(m: Vector2i) -> SuperchessRules:
 		for c in side():
 			if s.in_check(c):
 				s._mate(c)
+	s.last_mover = color()
+	s._check_win()  # four-player chess: a king can be taken outright when its owner couldn't answer the check yet
 	s._next_turn()
 	return s
 
@@ -227,7 +250,9 @@ func _pseudo_moves(c: String) -> Array[Vector2i]:
 			"Q": _slides(i, at, ORTHO + DIAG, c, out)
 			"K":
 				_steps(i, at, ORTHO + DIAG, c, out)
-				if not in_check(c):
+				if four and not in_check(c):
+					_castles_four(i, c, out)
+				elif not in_check(c):
 					for r in castling:
 						if board[r] == c + "R" and region(Vector2i(r % N, r / N)) == region(at):
 							out.append(Vector2i(i, r))
@@ -239,14 +264,14 @@ func _pseudo_moves(c: String) -> Array[Vector2i]:
 
 func _pawn(i: int, at: Vector2i, d: Vector2i, c: String, out: Array[Vector2i]) -> void:
 	var one := at + d
-	if playable(one) and board[_idx(one)] == "":
+	if _ok(one) and board[_idx(one)] == "":
 		out.append(Vector2i(i, _idx(one)))
 		var two := one + d
-		if i in pawn_starts[c] and playable(two) and board[_idx(two)] == "":
+		if i in pawn_starts[c] and _ok(two) and board[_idx(two)] == "":
 			out.append(Vector2i(i, _idx(two)))
 	for step in _capture_steps(d):
 		var t: Vector2i = at + step
-		if not playable(t):
+		if not _ok(t):
 			continue
 		var ti := _idx(t)
 		if _enemy(ti, c) or (not ep.is_empty() and ti == ep.target and _enemy(ep.pawn, c)):
@@ -256,14 +281,14 @@ func _pawn(i: int, at: Vector2i, d: Vector2i, c: String, out: Array[Vector2i]) -
 func _steps(i: int, at: Vector2i, dirs: Array, c: String, out: Array[Vector2i]) -> void:
 	for d in dirs:
 		var t: Vector2i = at + d
-		if playable(t) and (board[_idx(t)] == "" or _enemy(_idx(t), c)):
+		if _ok(t) and (board[_idx(t)] == "" or _enemy(_idx(t), c)):
 			out.append(Vector2i(i, _idx(t)))
 
 
 func _slides(i: int, at: Vector2i, dirs: Array, c: String, out: Array[Vector2i]) -> void:
 	for d in dirs:
 		var t: Vector2i = at + d
-		while playable(t):  # the hole and cut corners stop sliders
+		while _ok(t):  # the hole and cut corners stop sliders
 			var ti := _idx(t)
 			if board[ti] != "" and not _enemy(ti, c):
 				break
@@ -281,6 +306,20 @@ func _apply(m: Vector2i) -> SuperchessRules:
 	var target: String = board[m.y]
 	var from := Vector2i(m.x % N, m.x / N)
 	var to := Vector2i(m.y % N, m.y / N)
+	if four and target != "":  # free for all points; taking a king knocks that army out
+		s.points[c] += 1 if target == target[0] + "Q*" else POINTS[target[1]]
+		if target[1] == "K":
+			for i in s.board.size():
+				if s.board[i].begins_with(target[0]):
+					s.board[i] = ""
+			s.events.append("%s's king is taken" % NAMES[target[0]])
+	if four and p[1] == "K" and (absi(m.y - m.x) == 2 or absi(m.y - m.x) == 2 * N):  # castling: the rook crosses
+		var step := (m.y - m.x) / 2
+		var r := m.x + step
+		while board[r] != c + "R":
+			r += step
+		s.board[m.x + step] = board[r]
+		s.board[r] = ""
 	if p[1] == "K" and target == c + "R":  # castling: swap with own rook
 		s.board[m.x] = target
 		s.board[m.y] = p
@@ -301,12 +340,17 @@ func _apply(m: Vector2i) -> SuperchessRules:
 		if not ep.is_empty() and m.y == ep.target and delta != d:
 			s.board[ep.pawn] = ""
 			captured = true
+			if four:
+				s.points[c] += 1
 		if delta == d * 2:
 			s.ep = {"target": _idx(from + d), "pawn": m.y}
 		var piece := c + "P" + dir
 		# Promotion: end of the file, or a capture that enters a frontier other than the one it marches through.
 		var front := region(to)
-		if not playable(to + d) or (captured and front.length() == 1 and front != region(HOME[c] + d * 5)):
+		if four:  # promote on the 8th rank: 6 squares on from the pawns' starting line, the board's middle
+			if {"u": to.y == 6, "d": to.y == 7, "r": to.x == 7, "l": to.x == 6}[dir]:
+				piece = c + "Q*"  # ponytail: auto-queen
+		elif not _ok(to + d) or (captured and front.length() == 1 and front != region(HOME[c] + d * 5)):
 			piece = c + "Q"  # ponytail: auto-queen, add a picker (any piece, incl. partner's colors) when wanted
 		s.board[m.y] = piece
 	if p[1] == "K":  # king moved (or castled): none of this army's rooks can castle any more
@@ -346,6 +390,8 @@ func _next_turn() -> void:
 
 func _mate(c: String) -> void:
 	events.append("%s is checkmated" % NAMES[c])
+	if four and last_mover != "" and last_mover != c:
+		points[last_mover] += 20
 	_remove_king(c)
 	_check_win()
 
@@ -361,6 +407,9 @@ func _remove_king(c: String) -> void:
 
 
 func _check_win() -> void:
+	if mode == "ffa" and four:
+		_four_result()
+		return
 	if mode == "ffa":
 		var alive := COLORS.filter(func(c): return king_of(c) != -1)
 		if alive.size() == 1:
@@ -376,6 +425,9 @@ func _check_win() -> void:
 func _copy() -> SuperchessRules:
 	var s := SuperchessRules.new()
 	s.mode = mode
+	s.four = four
+	s.points = points.duplicate()
+	s.last_mover = last_mover
 	s.board = board.duplicate()
 	s.turn = turn
 	s.castling = castling.duplicate()
@@ -393,7 +445,7 @@ func _enemy(i: int, c: String) -> bool:
 
 
 func _is(t: Vector2i, kind: String, c: String, allies: bool) -> bool:
-	if not playable(t):
+	if not _ok(t):
 		return false
 	var p: String = board[_idx(t)]
 	return p != "" and p[1] == kind and allied(p[0], c) == allies
@@ -401,7 +453,7 @@ func _is(t: Vector2i, kind: String, c: String, allies: bool) -> bool:
 
 func _ray(at: Vector2i, d: Vector2i) -> String:
 	var t := at + d
-	while playable(t):
+	while _ok(t):
 		if board[_idx(t)] != "":
 			return board[_idx(t)]
 		t += d
@@ -410,3 +462,32 @@ func _ray(at: Vector2i, d: Vector2i) -> String:
 
 static func _idx(t: Vector2i) -> int:
 	return t.y * N + t.x
+
+
+func _ok(c: Vector2i) -> bool:
+	return playable(c, four)
+
+
+## Four-player chess castling, as in chess: king two squares toward an unmoved rook on its own edge, the rook
+## landing on the square it crossed. Everything between empty, the crossed square not attacked.
+func _castles_four(k: int, c: String, out: Array[Vector2i]) -> void:
+	for r in castling:
+		if board[r] != c + "R" or (r / N != k / N and r % N != k % N):
+			continue
+		var step := (1 if r > k else -1) * (1 if r / N == k / N else N)
+		var clear := true
+		for sq in range(k + step, r, step):
+			clear = clear and board[sq] == ""
+		if clear and not attacked(k + step, c):
+			out.append(Vector2i(k, k + 2 * step))
+
+
+## Free for all is over once one king is left: most points wins.
+func _four_result() -> void:
+	var alive := COLORS.filter(func(c): return king_of(c) != -1)
+	if alive.size() > 1:
+		return
+	var best: int = points.values().max()
+	var top := COLORS.filter(func(c): return points[c] == best)
+	result = ("%s wins with %d points!" % [NAMES[top[0]], best]) if top.size() == 1 \
+		else "Draw: %s tie on %d points" % [" and ".join(PackedStringArray(top.map(func(c): return NAMES[c]))), best]

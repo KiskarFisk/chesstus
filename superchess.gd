@@ -9,7 +9,10 @@ const PANEL_X := 16.0
 const FRAME := 16  # wooden border around the board; black beyond it
 const MODE_NAMES := {"2p": "2 players", "teams": "Teams", "ffa": "Free for all"}
 
-var game := SuperchessRules.start(Net.game_mode if Net.game_mode in ["2p", "teams", "ffa"] else "teams")
+## Four-player chess: fourchess.tscn sets this. Same rules class, different board, setup and scoring.
+@export var four := false
+
+var game: SuperchessRules
 var selected := -1
 var targets: Array = []
 var last_move := Vector2i(-1, -1)
@@ -24,6 +27,8 @@ var bot_busy := false  # host: a bot is thinking
 
 
 func _ready() -> void:
+	var modes := ["teams", "ffa"] if four else ["2p", "teams", "ffa"]
+	game = SuperchessRules.start(Net.game_mode if Net.game_mode in modes else ("ffa" if four else "teams"), four)
 	for c in "wb":
 		for p in "KQRBNP":
 			textures[c + p] = load("res://pieces/%s%s.svg" % [c, p])
@@ -113,10 +118,10 @@ func _draw() -> void:
 			checked.append(game.king_of(c))
 	for i in n * n:
 		var at := Vector2i(i % n, i / n)
-		if not SuperchessRules.playable(at):
+		if not SuperchessRules.playable(at, four):
 			continue
 		var r := Rect2(o + Vector2(at) * TILE, Vector2.ONE * TILE)
-		draw_rect(r, LIGHT if (at.x + at.y) % 2 == 0 else DARK)
+		draw_rect(r, LIGHT if (at.x + at.y + int(four)) % 2 == 0 else DARK)  # four: each army's right corner light
 		if i == last_move.x or i == last_move.y:
 			draw_rect(r, Color(0.6, 0.8, 0.2, 0.45))
 		if i == selected:
@@ -143,8 +148,8 @@ func _draw() -> void:
 func _draw_panel() -> void:
 	var font := ThemeDB.fallback_font
 	var y := 40.0
-	draw_string(font, Vector2(PANEL_X, y), "Superchess", HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
-	draw_string(font, Vector2(PANEL_X + 150, y), MODE_NAMES[game.mode], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
+	draw_string(font, Vector2(PANEL_X, y), "Four-player chess" if four else "Superchess", HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
+	draw_string(font, Vector2(PANEL_X + (245 if four else 150), y), MODE_NAMES[game.mode], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	y += 34
 	for i in SuperchessRules.COLORS.size():
 		var c: String = SuperchessRules.COLORS[i]
@@ -153,6 +158,8 @@ func _draw_panel() -> void:
 		draw_rect(row.grow(1), LIGHT)  # so the black king shows on the black background
 		draw_texture_rect(t[0], row, false, t[1])
 		var line := "%s (%s)" % [SuperchessRules.NAMES[c], Net.name_of(Net.seats[i])]
+		if four and game.mode == "ffa":
+			line += "  %d pts" % game.points[c]
 		if game.king_of(c) == -1:
 			line += " - king out"
 		elif game.in_check(c):
@@ -177,7 +184,7 @@ static func _diagonal(a: int, b: int) -> bool:
 
 func _square_at(pos: Vector2) -> int:
 	var c := Vector2i(((pos - _origin()) / TILE).floor())
-	return c.y * SuperchessRules.N + c.x if SuperchessRules.playable(c) else -1
+	return c.y * SuperchessRules.N + c.x if SuperchessRules.playable(c, four) else -1
 
 
 func _unhandled_input(event: InputEvent) -> void:

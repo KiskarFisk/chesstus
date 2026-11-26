@@ -34,6 +34,13 @@ const GAMES := {
 			{"id": "", "name": "4 players (partners)", "players": 4, "seats": ["White", "Black", "Yellow", "Red"],
 				"teams": [[0, 2], [1, 3]], "armies": [0, 1, 2, 3]},
 		]},
+	"F": {"name": "Four-player chess", "letter": "C", "scene": "res://fourchess.tscn", "color": Color(0.85, 0.75, 0.2),
+		"modes": [
+			{"id": "ffa", "name": "Free for all", "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0], [1], [2], [3]], "armies": [0, 1, 2, 3]},
+			{"id": "teams", "name": "Teams", "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0, 2], [1, 3]], "armies": [0, 1, 2, 3]},
+		]},
 	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
 	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),

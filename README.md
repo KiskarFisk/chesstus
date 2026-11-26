@@ -16,6 +16,7 @@ Everything is drawn at runtime, except the chess pieces.
 | **M**  | Minishogi | Shogi on 5x5 with one of each piece and a one-rank promotion zone. Shows as **S** on the hub |
 | **Q**  | Quoridor | 9x9, 2 players with 10 walls each, or 4 with 5 each (pick in the vote popup; the 4 start on all four edges and take turns clockwise). Full rules: straight and diagonal jumps, no jumping two pawns, and no wall may cut a pawn off its goal. With 4 players, whoever resigns leaves and the rest play on. Easy and Medium bots |
 | **P**  | Cribbage | 2 or 3 players, or 4 as partners (pick in the vote popup). Full rules: crib, starter and his heels, pegging (15, 31, pairs, runs, go, last card) and the show (fifteens, pairs, runs, flushes, nobs), first to 121 wins at once. Easy and Medium bots. Shows as **Cr** on the hub; not on the hub map yet. Every player holds the whole deal, so hands could be peeked at with a modded client |
+| **F**  | Four-player chess | The modern 14x14 board with 3x3 corners cut: four armies on the middle of each edge, White, Black, Yellow, Red clockwise. Pawns promote on reaching the middle (their 8th rank). **Free for all** scores points (captures: pawn 1, knight 3, bishop or rook 5, queen 9, promoted queen 1; king or checkmate 20); a mated army leaves the board, and when one king is left the most points wins. **Teams**: White + Yellow against Black + Red. Shares its rules code and UI with Superchess. Shows as **C** on the hub; not on the hub map yet |
 
 ## Future games
 
@@ -45,7 +46,6 @@ Ideas, roughly in order of how much existing code they can reuse.
 | **Mancala (Oware)** | 2 | Sow seeds around a ring of pits and capture by landing in the right count. A new board shape, tiny rules |
 | **Backgammon** | 2 | Dice, racing your pieces home, hitting lone pieces. Brings luck to the hub |
 | **Chinese Checkers** | 2-4 | Star board, hop chains. Uses all four player colors |
-| **Four-player chess** | 4 | Modern 14x14 four-army chess (free for all with points). Shares the board shape with Superchess |
 | **Texas Hold'em** | 2-4 | Poker with chips only, no real money. Hidden hands, and bluffing makes the bots interesting. Note: the whole game state goes to every player, so hands could be peeked at |
 | **Four-player Pong** | 4 | One paddle per edge, like Quoridor's four sides. Real-time, so it needs positions synced every frame instead of validated turn moves |
 
@@ -87,6 +87,7 @@ Any seat can be a bot: pick **Bot (Easy)** or **Bot (Medium)** in the seat dropd
 | `quoridor_rules.gd` / `quoridor.gd` / `quoridor.tscn` | Quoridor rules (`QuoridorRules`, 2 or 4 players) and board UI |
 | `test_quoridor_rules.gd` | Quoridor checks: jumps, wall overlap and path blocking, 4 player turns and resigning, bots |
 | `cribbage_rules.gd` / `cribbage.gd` / `cribbage.tscn` | Cribbage rules (`CribbageRules`, 2-4 players) and table UI with the pegboard |
+| `fourchess.tscn` / `test_fourchess.gd` | Four-player chess: the Superchess scene with `four = true`, and its checks (board, setup, castling, promotion, points) |
 | `test_cribbage_rules.gd` | Cribbage checks: hand counting (the 29 hand, double runs, flushes, nobs), pegging, go, the show, deals, bots |
 | `test_variants.gd` | Fischer Random (start positions, castling) and Crazyhouse (hands, drops, drop mate) checks |
 | `shogi_rules.gd` / `shogi.gd` / `shogi.tscn` | Shogi rules (`ShogiRules`, any n x n board) and board UI |
