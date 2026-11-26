@@ -17,6 +17,10 @@ const PLAYER_COLORS := [
 	{"name": "Red", "piece": "w", "tint": Color(1.0, 0.3, 0.25)},
 ]
 
+# Bots sit in seats with negative ids: -level. The host runs them (see may_act, think).
+const BOTS := {-1: "Bot (Easy)", -2: "Bot (Medium)"}
+const BOT_DELAY := 0.5  # seconds before a bot's move lands, so it's visible
+
 signal proposal_changed
 
 var status := "Offline"
@@ -25,7 +29,8 @@ var colors := {}  # peer id -> PLAYER_COLORS index
 # Game being voted on, or {} if none. Host-owned:
 # {"game": letter, "players": [ids], "seats": [id per seat], "votes": {id: true}}
 var proposal := {}
-var seats: Array = [1, 1]  # who plays each seat of the running game (offline: you play every seat)
+var seats: Array = [1, 1]  # who plays each army of the running game (offline: you play every army)
+var game_mode := ""  # id of the mode picked in the vote, e.g. Superchess "2p" / "teams" / "ffa"
 var in_game: Array = []  # peers in the running game (players + spectators); empty while in the hub
 var my_name := "Player"
 var names := {}  # peer id -> display name, host-owned
@@ -77,7 +82,32 @@ func color_of(id: int) -> Dictionary:
 
 
 func name_of(id: int) -> String:
+	if id < 0:
+		return BOTS[id]
 	return names.get(id, "Host" if id == 1 else "Guest")
+
+
+## Offline with only bots playing: you're just watching, so you may leave before the game ends.
+func watching_bots() -> bool:
+	return not online() and seats.all(func(id): return id < 0)
+
+
+## May sender act for this seat? Its own player, or the host on behalf of a bot.
+func may_act(seat_id: int, sender: int) -> bool:
+	return sender == seat_id or (seat_id < 0 and sender == 1)
+
+
+## Run work() on a worker thread after BOT_DELAY, then done(result) on the main thread.
+## done is skipped if its object was freed meanwhile (the game ended).
+func think(work: Callable, done: Callable) -> void:
+	await get_tree().create_timer(BOT_DELAY).timeout
+	var box := []  # lambdas capture locals by value; an Array is shared
+	var task := WorkerThreadPool.add_task(func(): box.append(work.call()))
+	while not WorkerThreadPool.is_task_completed(task):
+		await get_tree().process_frame
+	WorkerThreadPool.wait_for_task_completion(task)
+	if done.is_valid():
+		done.call(box[0])
 
 
 ## Change our name: remembered in user://settings.cfg and sent to the host.
@@ -115,34 +145,69 @@ func propose(game: String) -> void:
 			or not _hub().GAMES.has(game):
 		return
 	var players := [1] + Array(multiplayer.get_peers())
-	_publish({"game": game, "players": players, "seats": _default_seats(game, players), "votes": {}})
+	var modes := modes_of(game)
+	var mode := 0  # the mode meant for this many players, else the first
+	for i in modes.size():
+		if modes[i].get("players", 0) == clampi(players.size(), 2, 4):
+			mode = i
+			break
+	_publish({"game": game, "mode": mode, "players": players, "seats": _default_seats(modes[mode], players), "votes": {}})
 
 
-## Spread players over the game's teams, then over each team's seats. Short on players,
-## someone holds several seats (2 players in Superchess: one runs both light armies).
-func _default_seats(game: String, players: Array) -> Array:
-	var teams: Array = _hub().GAMES[game].teams
+## A game's modes. Games without a "modes" list have one, built from their seats and teams.
+func modes_of(game: String) -> Array:
+	var g: Dictionary = _hub().GAMES[game]
+	return g.get("modes", [{"id": "", "name": "", "seats": g.get("seats", []), "teams": g.get("teams", []),
+		"armies": range(g.get("seats", []).size())}])
+
+
+func proposal_mode() -> Dictionary:
+	return modes_of(proposal.game)[proposal.mode]
+
+
+@rpc("any_peer", "call_local", "reliable")
+func set_mode(mode: int) -> void:
+	if not multiplayer.is_server() or proposal.is_empty() or multiplayer.get_remote_sender_id() not in proposal.players \
+			or mode < 0 or mode >= modes_of(proposal.game).size():
+		return
+	proposal.mode = mode
+	proposal.seats = _default_seats(proposal_mode(), proposal.players)
+	proposal.votes = {}  # everyone re-confirms
+	_publish(proposal)
+
+
+## Seat players one by one, taking each team's seats in turn (team A seat 1, team B seat 1, team A seat 2...),
+## so a 3 player game gives one person to each seat. Seats left over go to a player already on that team
+## (2 players in 4 player teams: each runs a whole team), or round-robin if the team has nobody.
+func _default_seats(mode: Dictionary, players: Array) -> Array:
+	var teams: Array = mode.teams
+	var order := []
+	for j in teams.map(func(t): return t.size()).max():
+		for t in teams:
+			if j < t.size():
+				order.append(t[j])
 	var s := []
-	s.resize(_hub().GAMES[game].seats.size())
+	s.resize(mode.seats.size())
+	for k in mini(players.size(), order.size()):
+		s[order[k]] = players[k]
 	for t in teams.size():
-		var mine := players.filter(func(p): return players.find(p) % teams.size() == t)
-		if mine.is_empty():
-			mine = [players[t % players.size()]]
-		for j in teams[t].size():
-			s[teams[t][j]] = mine[j % mine.size()]
+		var first = s[teams[t][0]]
+		for seat in teams[t]:
+			if s[seat] == null:
+				s[seat] = first if first != null else players[t % players.size()]
 	return s
 
 
 @rpc("any_peer", "call_local", "reliable")
 func set_seat(seat: int, id: int) -> void:
-	if not multiplayer.is_server() or proposal.is_empty() or id not in proposal.players \
-			or seat < 0 or seat >= proposal.seats.size():
-		return
+	if not multiplayer.is_server() or proposal.is_empty() or not (id in proposal.players or BOTS.has(id)) \
+			or seat < 0 or seat >= proposal.seats.size() or (seat == 0 and id < 0 and online()):
+		return  # online, the first seat must be a person: no all-bot games over the network
 	var s: Array = proposal.seats
 	var other := s.find(id)
-	# One seat per team (chess): picking someone seated elsewhere swaps them. Team games with
-	# several seats per team let one player hold more than one seat, so just assign.
-	if other != -1 and _hub().GAMES[proposal.game].teams.all(func(t): return t.size() == 1):
+	# One seat per team (chess): picking a player seated elsewhere swaps them. Team games with
+	# several seats per team let one player hold more than one seat, so just assign. Bots can fill any number of seats.
+	if id > 0 and other != -1 and proposal_mode().teams.all(func(t): return t.size() == 1):
 		s[other] = s[seat]
 	s[seat] = id
 	proposal.votes = {}  # seating changed, everyone re-confirms
@@ -159,7 +224,9 @@ func vote(yes: bool) -> void:
 		return
 	proposal.votes[id] = true
 	if proposal.players.all(func(p): return proposal.votes.has(p)):
-		_start.rpc(proposal.seats, proposal.players, _hub().GAMES[proposal.game].scene)
+		var mode := proposal_mode()
+		var armies: Array = mode.armies.map(func(seat): return proposal.seats[seat])  # seat ids -> per army
+		_start.rpc(armies, proposal.players, _hub().GAMES[proposal.game].scene, mode.id)
 	else:
 		_publish(proposal)
 
@@ -177,8 +244,9 @@ func _set_proposal(p: Dictionary, msg: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _start(s: Array, players: Array, scene: String) -> void:
+func _start(s: Array, players: Array, scene: String, mode_id: String) -> void:
 	seats = s
+	game_mode = mode_id
 	in_game = players
 	proposal = {}
 	proposal_changed.emit()

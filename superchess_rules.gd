@@ -5,9 +5,14 @@ extends RefCounted
 ## Squares are 0..195, index = y * 14 + x, x = file a..n, y = 0 is rank 14 (top).
 ## Pieces are color + type, pawns add their direction(s): "wPd" moves down, point pawn "wPrd" may pick r or d.
 ## Moves are Vector2i(from, to). Castling is the king moving onto its own rook's square (they swap).
+##
+## Modes:
+##  "teams" - official 3 and 4 player game: White + Yellow vs Black + Red, one army per turn, clockwise.
+##  "2p"    - official 2 player game: light vs dark alternate, moving any piece of either of their armies.
+##  "ffa"   - free for all (not in the official rules): every army alone; a mated army leaves the board.
 
 const N := 14
-const COLORS := ["w", "b", "y", "r"]  # turn order, clockwise
+const COLORS := ["w", "b", "y", "r"]  # turn order, clockwise; in "2p", turn 0 = light (w+y), 1 = dark (b+r)
 const NAMES := {"w": "White", "b": "Black", "y": "Yellow", "r": "Red"}
 const ORTHO := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 const DIAG := [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
@@ -27,17 +32,19 @@ const SETUP := {
 		"Pr": ["e1", "e2", "e3", "e4"], "Pu": ["a5", "b5", "c5", "d5"], "Pru": ["e5"]},
 }
 
+var mode := "teams"
 var board: Array = []
-var turn := 0  # index into COLORS
+var turn := 0  # index into COLORS (in "2p" only 0 or 1)
 var castling: Array = []  # rook squares that may still castle (removed when the king or that rook moves)
 var ep := {}  # {"target": sq, "pawn": sq} for the very next turn only
 var pawn_starts := {}  # color -> squares; a pawn there hasn't moved yet (pawns never move backwards)
 var result := ""  # non-empty when the game is over
-var events: Array = []  # what happened automatically after the last move (mates, passes)
+var events: Array = []  # what happened automatically during the last move (mates, passes)
 
 
-static func start() -> SuperchessRules:
+static func start(game_mode := "teams") -> SuperchessRules:
 	var s := SuperchessRules.new()
+	s.mode = game_mode
 	s.board.resize(N * N)
 	s.board.fill("")
 	for c in SETUP:
@@ -82,8 +89,18 @@ static func region(c: Vector2i) -> String:
 	return ys + xs
 
 
+## Same side: same team, or in free for all the same army.
+func allied(a: String, b: String) -> bool:
+	return a == b if mode == "ffa" else team(a) == team(b)
+
+
 func color() -> String:
 	return COLORS[turn]
+
+
+## Armies the player to move controls this turn.
+func side() -> Array:
+	return [color(), partner(color())] if mode == "2p" else [color()]
 
 
 func king_of(c: String) -> int:
@@ -92,20 +109,43 @@ func king_of(c: String) -> int:
 
 func in_check(c: String) -> bool:
 	var k := king_of(c)
-	return k != -1 and attacked(k, 1 - team(c))
+	return k != -1 and attacked(k, c)
 
 
 func legal_moves() -> Array[Vector2i]:
+	if mode == "2p":
+		return _legal_2p()
 	var c := color()
 	var p := partner(c)
-	var partner_was_safe := not in_check(p)
+	var guard_partner := mode == "teams" and not in_check(p)
 	var out: Array[Vector2i] = []
 	for m in _pseudo_moves(c):
 		var s := _apply(m)
 		# Can't leave yourself in check, or put your partner into check (a check they were already in may stand).
-		if s.in_check(c) or (partner_was_safe and s.in_check(p)):
+		if s.in_check(c) or (guard_partner and s.in_check(p)):
 			continue
 		out.append(m)
+	return out
+
+
+## 2 players: any piece of either army. No move may put a safe king into check. If no move saves
+## every checked king, the moves that save the most are allowed and the rest get mated (see play).
+func _legal_2p() -> Array[Vector2i]:
+	var kings := side()
+	var checked := kings.filter(func(c): return in_check(c))
+	var best := 99
+	var out: Array[Vector2i] = []
+	for c in kings:
+		for m in _pseudo_moves(c):
+			var s := _apply(m)
+			var still := kings.filter(func(k): return s.in_check(k))
+			if still.any(func(k): return k not in checked):
+				continue
+			if still.size() < best:
+				best = still.size()
+				out = []
+			if still.size() == best:
+				out.append(m)
 	return out
 
 
@@ -113,42 +153,62 @@ func legal_moves() -> Array[Vector2i]:
 ## players without a legal move pass (each counts as that player's turn). See events.
 func play(m: Vector2i) -> SuperchessRules:
 	var s := _apply(m)
+	if mode == "2p":  # a king this move couldn't save is checkmated on the same turn
+		for c in side():
+			if s.in_check(c):
+				s._mate(c)
 	s._next_turn()
 	return s
 
 
-## The player to move resigns their king (counts as their move).
+## The player to move resigns: their king (2p: the whole game; ffa: their army leaves).
 func resign() -> SuperchessRules:
 	var s := _copy()
-	s.board[s.king_of(s.color())] = ""
-	s.events = ["%s resigns" % NAMES[s.color()]]
+	if mode == "2p":
+		s.events = ["%s resigns" % ("Light" if turn == 0 else "Dark")]
+		for c in s.side():
+			if s.king_of(c) != -1:
+				s.board[s.king_of(c)] = ""
+	else:
+		s.events = ["%s resigns" % NAMES[s.color()]]
+		s._remove_king(s.color())
 	s._check_win()
 	s.ep = {}
 	s._next_turn()
 	return s
 
 
-func attacked(sq: int, by_team: int) -> bool:
-	var c := Vector2i(sq % N, sq / N)
+## Is sq attacked by a piece not on c's side?
+func attacked(sq: int, c: String) -> bool:
+	return _hit(sq, c, false)
+
+
+## Is sq covered by another piece on c's side?
+func defended(sq: int, c: String) -> bool:
+	return _hit(sq, c, true)
+
+
+func _hit(sq: int, c: String, allies: bool) -> bool:
+	var at := Vector2i(sq % N, sq / N)
 	for d in KNIGHT:
-		if _is(c + d, by_team, "N"):
+		if _is(at + d, "N", c, allies):
 			return true
 	for d in ORTHO + DIAG:
-		if _is(c + d, by_team, "K"):
+		if _is(at + d, "K", c, allies):
 			return true
-	for d in DIAG:  # a pawn on c + d attacks c if one of its directions steps it diagonally onto c
-		var q: Vector2i = c + d
-		if _is(q, by_team, "P"):
+	for d in DIAG:  # a pawn on at + d hits at if one of its directions steps it diagonally onto at
+		var q: Vector2i = at + d
+		if _is(q, "P", c, allies):
 			for dir in board[_idx(q)].substr(2):
 				if -d in _capture_steps(DIRS[dir]):
 					return true
 	for d in ORTHO:
-		var p := _ray(c, d)
-		if p != "" and team(p[0]) == by_team and p[1] in "RQ":
+		var p := _ray(at, d)
+		if p != "" and allied(p[0], c) == allies and p[1] in "RQ":
 			return true
 	for d in DIAG:
-		var p := _ray(c, d)
-		if p != "" and team(p[0]) == by_team and p[1] in "BQ":
+		var p := _ray(at, d)
+		if p != "" and allied(p[0], c) == allies and p[1] in "BQ":
 			return true
 	return false
 
@@ -161,51 +221,51 @@ func _pseudo_moves(c: String) -> Array[Vector2i]:
 			continue
 		var at := Vector2i(i % N, i / N)
 		match p[1]:
-			"N": _steps(i, at, KNIGHT, out)
-			"B": _slides(i, at, DIAG, out)
-			"R": _slides(i, at, ORTHO, out)
-			"Q": _slides(i, at, ORTHO + DIAG, out)
+			"N": _steps(i, at, KNIGHT, c, out)
+			"B": _slides(i, at, DIAG, c, out)
+			"R": _slides(i, at, ORTHO, c, out)
+			"Q": _slides(i, at, ORTHO + DIAG, c, out)
 			"K":
-				_steps(i, at, ORTHO + DIAG, out)
+				_steps(i, at, ORTHO + DIAG, c, out)
 				if not in_check(c):
 					for r in castling:
 						if board[r] == c + "R" and region(Vector2i(r % N, r / N)) == region(at):
 							out.append(Vector2i(i, r))
 			"P":
 				for dir in p.substr(2):
-					_pawn(i, at, DIRS[dir], out)
+					_pawn(i, at, DIRS[dir], c, out)
 	return out
 
 
-func _pawn(i: int, at: Vector2i, d: Vector2i, out: Array[Vector2i]) -> void:
+func _pawn(i: int, at: Vector2i, d: Vector2i, c: String, out: Array[Vector2i]) -> void:
 	var one := at + d
 	if playable(one) and board[_idx(one)] == "":
 		out.append(Vector2i(i, _idx(one)))
 		var two := one + d
-		if i in pawn_starts[color()] and playable(two) and board[_idx(two)] == "":
+		if i in pawn_starts[c] and playable(two) and board[_idx(two)] == "":
 			out.append(Vector2i(i, _idx(two)))
 	for step in _capture_steps(d):
 		var t: Vector2i = at + step
 		if not playable(t):
 			continue
 		var ti := _idx(t)
-		if _enemy(ti) or (not ep.is_empty() and ti == ep.target and _enemy(ep.pawn)):
+		if _enemy(ti, c) or (not ep.is_empty() and ti == ep.target and _enemy(ep.pawn, c)):
 			out.append(Vector2i(i, ti))
 
 
-func _steps(i: int, at: Vector2i, dirs: Array, out: Array[Vector2i]) -> void:
+func _steps(i: int, at: Vector2i, dirs: Array, c: String, out: Array[Vector2i]) -> void:
 	for d in dirs:
 		var t: Vector2i = at + d
-		if playable(t) and (board[_idx(t)] == "" or _enemy(_idx(t))):
+		if playable(t) and (board[_idx(t)] == "" or _enemy(_idx(t), c)):
 			out.append(Vector2i(i, _idx(t)))
 
 
-func _slides(i: int, at: Vector2i, dirs: Array, out: Array[Vector2i]) -> void:
+func _slides(i: int, at: Vector2i, dirs: Array, c: String, out: Array[Vector2i]) -> void:
 	for d in dirs:
 		var t: Vector2i = at + d
 		while playable(t):  # the hole and cut corners stop sliders
 			var ti := _idx(t)
-			if board[ti] != "" and not _enemy(ti):
+			if board[ti] != "" and not _enemy(ti, c):
 				break
 			out.append(Vector2i(i, ti))
 			if board[ti] != "":
@@ -216,8 +276,8 @@ func _slides(i: int, at: Vector2i, dirs: Array, out: Array[Vector2i]) -> void:
 ## Board change only, no turn handling.
 func _apply(m: Vector2i) -> SuperchessRules:
 	var s := _copy()
-	var c := color()
 	var p: String = board[m.x]
+	var c := p[0]
 	var target: String = board[m.y]
 	var from := Vector2i(m.x % N, m.x / N)
 	var to := Vector2i(m.y % N, m.y / N)
@@ -259,26 +319,53 @@ func _next_turn() -> void:
 	for i in COLORS.size():
 		if result:
 			return
-		turn = (turn + 1) % COLORS.size()
-		var c := color()
+		turn = (turn + 1) % (2 if mode == "2p" else COLORS.size())
+		var cs := side()
+		if not board.any(func(p): return p != "" and p[0] in cs):
+			continue  # army gone (all captured, or out in free for all): skip quietly
 		if not legal_moves().is_empty():
 			return
-		if in_check(c):
-			board[king_of(c)] = ""
-			events.append("%s is checkmated" % NAMES[c])
-			_check_win()
+		var checked := cs.filter(func(c): return in_check(c))
+		if not checked.is_empty():
+			for c in checked:
+				_mate(c)  # removing a mated king uses up the turn
+		elif mode == "2p":
+			result = "Draw: %s is stalemated" % ("Light" if turn == 0 else "Dark")
 		else:
+			var c := color()
 			events.append("%s has no legal move and passes" % NAMES[c])
-			var mate := _copy()
-			mate.turn = COLORS.find(partner(c))
-			if mate.legal_moves().is_empty() and not mate.in_check(partner(c)):
-				result = "Draw: both %s armies are stalemated" % ("light" if team(c) == 0 else "dark")
+			if mode == "teams":
+				var p := _copy()
+				p.turn = COLORS.find(partner(c))
+				if p.legal_moves().is_empty() and not p.in_check(partner(c)):
+					result = "Draw: both %s armies are stalemated" % ("light" if team(c) == 0 else "dark")
 		ep = {}
 	if not result:
 		result = "Draw: nobody can move"
 
 
+func _mate(c: String) -> void:
+	events.append("%s is checkmated" % NAMES[c])
+	_remove_king(c)
+	_check_win()
+
+
+## King leaves the board. In free for all the whole army goes with it.
+func _remove_king(c: String) -> void:
+	board[king_of(c)] = ""
+	if mode == "ffa":
+		for i in board.size():
+			if board[i].begins_with(c):
+				board[i] = ""
+		events.append("%s is out" % NAMES[c])
+
+
 func _check_win() -> void:
+	if mode == "ffa":
+		var alive := COLORS.filter(func(c): return king_of(c) != -1)
+		if alive.size() == 1:
+			result = "%s wins!" % NAMES[alive[0]]
+		return
 	for t in 2:
 		var cs := COLORS.filter(func(c): return team(c) == t)
 		if cs.all(func(c): return king_of(c) == -1):
@@ -288,6 +375,7 @@ func _check_win() -> void:
 
 func _copy() -> SuperchessRules:
 	var s := SuperchessRules.new()
+	s.mode = mode
 	s.board = board.duplicate()
 	s.turn = turn
 	s.castling = castling.duplicate()
@@ -300,19 +388,19 @@ static func _capture_steps(d: Vector2i) -> Array:
 	return [d + Vector2i(d.y, d.x), d - Vector2i(d.y, d.x)]
 
 
-func _enemy(i: int) -> bool:
-	return board[i] != "" and team(board[i][0]) != team(color())
+func _enemy(i: int, c: String) -> bool:
+	return board[i] != "" and not allied(board[i][0], c)
 
 
-func _is(t: Vector2i, by_team: int, kind: String) -> bool:
+func _is(t: Vector2i, kind: String, c: String, allies: bool) -> bool:
 	if not playable(t):
 		return false
 	var p: String = board[_idx(t)]
-	return p != "" and p[1] == kind and team(p[0]) == by_team
+	return p != "" and p[1] == kind and allied(p[0], c) == allies
 
 
-func _ray(c: Vector2i, d: Vector2i) -> String:
-	var t := c + d
+func _ray(at: Vector2i, d: Vector2i) -> String:
+	var t := at + d
 	while playable(t):
 		if board[_idx(t)] != "":
 			return board[_idx(t)]

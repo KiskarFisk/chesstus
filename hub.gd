@@ -2,15 +2,26 @@ extends Node2D
 
 const TILE := 64
 const STEP_TIME := 0.15
-const LABEL_RANGE := 5  # a game's name shows while any king is this many squares away or closer
+const LABEL_RANGE := 4  # a game's name shows while any king is this many squares away or closer
 const LABEL_FADE := 0.35  # seconds to fade a name fully in or out
 # Key: the game's unique character in hub_map.gd. letter: what's drawn on its square, usually the
 # family it belongs to (Superchess is a chess game, so C). seats: one per side; teams: seats playing together.
 const GAMES := {
 	"C": {"name": "Chess", "letter": "C", "scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95),
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
+	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
+	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),
-		"seats": ["White", "Black", "Yellow", "Red"], "teams": [[0, 2], [1, 3]]},
+		"modes": [
+			{"id": "2p", "name": "2 players", "players": 2, "seats": ["Light (White + Yellow)", "Dark (Black + Red)"],
+				"teams": [[0], [1]], "armies": [0, 1, 0, 1]},
+			{"id": "teams", "name": "3 players", "players": 3, "seats": ["Light (White + Yellow)", "Black", "Red"],
+				"teams": [[0], [1, 2]], "armies": [0, 1, 0, 2]},
+			{"id": "teams", "name": "4 players (teams)", "players": 4, "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0, 2], [1, 3]], "armies": [0, 1, 2, 3]},
+			{"id": "ffa", "name": "Free for all", "seats": ["White", "Black", "Yellow", "Red"],
+				"teams": [[0], [1], [2], [3]], "armies": [0, 1, 2, 3]},
+		]},
 }
 
 # Checkerboard colors per area, painted with the map editor's Theme brush. Key = letter in THEME_MAP.
@@ -127,17 +138,29 @@ func _show_proposal() -> void:
 	title.text = "Play %s?" % g.name
 	title.add_theme_font_size_override("font_size", 28)
 	col.add_child(title)
-	for i in g.seats.size():
+	var modes := Net.modes_of(p.game)
+	var mode: Dictionary = modes[p.mode]
+	if modes.size() > 1:
+		var mode_pick := OptionButton.new()
+		mode_pick.focus_mode = Control.FOCUS_NONE
+		for md in modes:
+			mode_pick.add_item(md.name)
+		mode_pick.select(p.mode)
+		mode_pick.item_selected.connect(func(idx): Net.set_mode.rpc_id(1, idx))
+		col.add_child(mode_pick)
+	for i in mode.seats.size():
 		var row := HBoxContainer.new()
 		var seat := Label.new()
-		seat.text = g.seats[i]
+		seat.text = mode.seats[i]
 		seat.custom_minimum_size.x = 80
 		var pick := OptionButton.new()
 		pick.focus_mode = Control.FOCUS_NONE
-		for id in p.players:
+		var bots_ok: bool = i > 0 or not Net.online()  # online, the first seat must be a person
+		var options: Array = p.players + (Net.BOTS.keys() if bots_ok else [])
+		for id in options:
 			pick.add_item(_you(id))
-		pick.select(p.players.find(p.seats[i]))
-		pick.item_selected.connect(func(idx): Net.set_seat.rpc_id(1, i, p.players[idx]))
+		pick.select(options.find(p.seats[i]))
+		pick.item_selected.connect(func(idx): Net.set_seat.rpc_id(1, i, options[idx]))
 		row.add_child(seat)
 		row.add_child(pick)
 		col.add_child(row)

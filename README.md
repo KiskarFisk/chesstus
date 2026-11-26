@@ -9,7 +9,7 @@ Everything is drawn at runtime, except the chess pieces.
 | Square | Game  | Status |
 |--------|-------|--------|
 | **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported |
-| **S**  | Superchess | 4 armies, 2 teams (White + Yellow vs Black + Red), 2-4 players. [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
+| **S**  | Superchess | 4 armies; modes picked in the vote popup: **2 players** (light vs dark, move any piece of either army; stalemate draws), **3 players** (one person runs the light team), **4 players (teams)** (White + Yellow vs Black + Red, clockwise), **Free for all** (house rule: mated armies leave, last king wins). [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 
 ## Controls
 
@@ -28,6 +28,8 @@ Over the internet, the host either forwards UDP 7777 on their router, or both pl
 
 Without a connection, chess is two players on one screen.
 
+Any seat can be a bot: pick **Bot (Easy)** or **Bot (Medium)** in the seat dropdown of the vote popup. Bots run on the host and play through the same validated moves as people. Easy plays randomly but grabs captures; Medium searches 3 moves ahead in chess and weighs team material and hanging pieces in Superchess.
+
 ## Project layout
 
 | File | Purpose |
@@ -41,6 +43,8 @@ Without a connection, chess is two players on one screen.
 | `superchess_rules.gd` / `superchess.gd` / `superchess.tscn` | Superchess rules (`SuperchessRules`) and board UI |
 | `test_chess_rules.gd` | Checks move generation against known move counts for standard test positions (perft) |
 | `test_superchess_rules.gd` | Rule checks for Superchess (point pawns, hole, castling swap, partner check, mates, promotion, en passant) |
+| `bots.gd` | Bot move pickers (`Bots`) for chess and Superchess, run on a worker thread via `Net.think` |
+| `test_bots.gd` | Bot sanity checks (finds mate in one, takes free pieces, won't hang its queen, speed) |
 | `pieces/` | Chess piece SVGs |
 
 ## Adding a game

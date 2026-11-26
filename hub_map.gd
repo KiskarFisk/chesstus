@@ -3,8 +3,8 @@
 # THEME_MAP: one theme letter per square, same size as MAP (see THEMES in hub.gd, '.' = classic)
 const MAP := [
 	"  #####     ",
-	"  #...#     ",
-	"  #SC.#     ",
+	"  #S..#     ",
+	"  #.C.#     ",
 	"  #...#     ",
 	"  #...#     ",
 	"###...######",

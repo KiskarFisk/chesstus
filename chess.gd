@@ -17,6 +17,7 @@ var last_move := Vector2i(-1, -1)  # from, to of the latest move, highlighted
 var dragging := false  # selected piece is held under the mouse
 var drag_pos := Vector2.ZERO  # mouse position, local
 var buttons := HBoxContainer.new()
+var bot_busy := false  # host: a bot is thinking
 
 
 func _ready() -> void:
@@ -63,16 +64,30 @@ func _refresh() -> void:
 	for b in buttons.get_children():
 		b.queue_free()
 	var me := multiplayer.get_unique_id()
-	if result:
+	if result or Net.watching_bots():
 		_button("Back to hub", func(): Net.end_game())
 	elif _side_of(me) != -1:
 		if draw_offer != -1 and Net.seats[1 - draw_offer] == me:
 			_button("Accept draw", func(): Net.send(_accept_draw))
 			_button("Decline draw", func(): Net.send(_decline_draw))
-		elif draw_offer == -1:
+		elif draw_offer == -1 and not Net.seats.any(func(id): return id < 0):  # bots don't take draws
 			_button("Offer draw", func(): Net.send(_offer_draw))
 		_button("Resign", func(): Net.send(_resign))
 	queue_redraw()
+	_maybe_bot()
+
+
+## Host only: if a bot is to move, think on a worker thread, then play its move like anyone else's.
+func _maybe_bot() -> void:
+	var seat: int = Net.seats[_turn()]
+	if seat >= 0 or result or bot_busy or not multiplayer.is_server():
+		return
+	bot_busy = true
+	var state := game
+	Net.think(Bots.chess_move.bind(state, -seat), func(m):
+		bot_busy = false
+		if game == state:  # nothing else happened meanwhile (e.g. a resignation)
+			Net.send(_move, m))
 
 
 func _button(text: String, cb: Callable) -> void:
@@ -147,7 +162,7 @@ func _draw_captures(font: Font, o: Vector2) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and result:
+	if event.is_action_pressed("ui_cancel") and (result or Net.watching_bots()):
 		Net.end_game()
 	elif event is InputEventMouseMotion and dragging:
 		drag_pos = make_input_local(event).position
@@ -189,7 +204,7 @@ func _is_capture(sq: int) -> bool:
 
 @rpc("any_peer", "call_local", "reliable")
 func _move(m: Vector2i) -> void:
-	if result or multiplayer.get_remote_sender_id() != Net.seats[_turn()] or m not in game.legal_moves():
+	if result or not Net.may_act(Net.seats[_turn()], multiplayer.get_remote_sender_id()) or m not in game.legal_moves():
 		return
 	game = game.play(m)
 	last_move = m

@@ -58,13 +58,37 @@ func _init() -> void:
 	t = S.start().resign()
 	_check("resigning removes your king and passes the turn", t.king_of("w") == -1 and t.color() == "b")
 
+	# --- 2 players: light (white + yellow) vs dark, any piece of either army per turn ---
+	t = S.start("2p")
+	_check("2p: light can move both armies (26 + 26)", t.legal_moves().size() == 52)
+	t = t.play(_m("k5", "k7"))  # a yellow move on light's turn
+	_check("2p: then dark moves", t.color() == "b" and t.side() == ["b", "r"])
+	# A black knight forks both light kings: light saves one, the other is mated on the same turn.
+	t = _pos({"b10": "", "m5": "", "f10": "wK", "j10": "yK", "h11": "bN"}, "w", "2p")
+	t = t.play(t.legal_moves()[0])
+	_check("2p: double check costs a king the same turn",
+		(t.king_of("w") == -1) != (t.king_of("y") == -1) and t.color() == "b" and t.result == "")
+	t = _pos({"m10": "", "b5": "", "k14": "bK", "f13": "wR", "j7": "wR"}, "w", "2p").play(_m("m5", "m6"))
+	_check("2p: stalemate is a draw", t.result == "Draw: Dark is stalemated")
+
+	# --- free for all ---
+	t = S.start("ffa")
+	_check("ffa: same opening moves", t.legal_moves().size() == 26)
+	t = _pos({"e7": "wQ", "e6": "yPu"}, "w", "ffa")
+	_check("ffa: anyone can be captured", S.sq_of("e6") in _targets(t, "e7"))
+	t = _pos({"k14": "bK", "m10": "", "f13": "wR", "g12": "wR", "k10": "bP" + "d"}, "w", "ffa").play(_m("g12", "g14"))
+	_check("ffa: a mated army leaves the board", t.king_of("b") == -1 and t.board[S.sq_of("k10")] == "" \
+		and t.color() == "y" and t.result == "")
+	t = _pos({"k14": "bK", "m10": "", "f13": "wR", "g12": "wR", "m5": "", "b5": ""}, "w", "ffa").play(_m("g12", "g14"))
+	_check("ffa: last king standing wins", t.result == "White wins!")
+
 	print("FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
 
 
 ## Empty board with a king for every army (overridable; "" removes), plus the given pieces.
-func _pos(pieces: Dictionary, turn := "w") -> SuperchessRules:
-	var s := S.start()
+func _pos(pieces: Dictionary, turn := "w", mode := "teams") -> SuperchessRules:
+	var s := S.start(mode)
 	s.board.fill("")
 	s.castling = []
 	var all := {"b10": "wK", "m10": "bK", "m5": "yK", "b5": "rK"}

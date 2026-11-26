@@ -6,8 +6,9 @@ const TILE := 38
 const LIGHT := Color("#eed8b5")
 const DARK := Color("#b48963")
 const PANEL_X := 16.0
+const MODE_NAMES := {"2p": "2 players", "teams": "Teams", "ffa": "Free for all"}
 
-var game := SuperchessRules.start()
+var game := SuperchessRules.start(Net.game_mode if Net.game_mode in ["2p", "teams", "ffa"] else "teams")
 var selected := -1
 var targets: Array = []
 var last_move := Vector2i(-1, -1)
@@ -18,6 +19,7 @@ var draw_offer := -1  # peer id that offered a draw, -1 if none
 var draw_yes := {}  # peer id -> true, players who agreed so far
 var log_lines: Array = []  # recent events shown in the side panel
 var buttons := VBoxContainer.new()
+var bot_busy := false  # host: a bot is thinking
 
 
 func _ready() -> void:
@@ -59,17 +61,32 @@ func _refresh() -> void:
 	for b in buttons.get_children():
 		b.queue_free()
 	var me := _me()
-	if game.result:
+	if game.result or Net.watching_bots():
 		_button("Back to hub", Net.end_game)
 	elif me in Net.seats:
 		if draw_offer != -1 and not draw_yes.has(me):
 			_button("Accept draw", func(): Net.send(_answer_draw, true))
 			_button("Decline draw", func(): Net.send(_answer_draw, false))
-		elif draw_offer == -1:
+		elif draw_offer == -1 and not Net.seats.any(func(id): return id < 0):  # bots don't take draws
 			_button("Offer draw", func(): Net.send(_offer_draw))
-		if Net.seats[game.turn] == me and game.king_of(game.color()) != -1:
-			_button("Resign %s king" % SuperchessRules.NAMES[game.color()], func(): Net.send(_resign))
+		if Net.seats[game.turn] == me and game.side().any(func(c): return game.king_of(c) != -1):
+			var what := "Resign" if game.mode == "2p" else "Resign %s king" % SuperchessRules.NAMES[game.color()]
+			_button(what, func(): Net.send(_resign))
 	queue_redraw()
+	_maybe_bot()
+
+
+## Host only: if a bot is to move, think on a worker thread, then play its move like anyone else's.
+func _maybe_bot() -> void:
+	var seat: int = Net.seats[game.turn]
+	if seat >= 0 or game.result or bot_busy or not multiplayer.is_server():
+		return
+	bot_busy = true
+	var state := game
+	Net.think(Bots.superchess_move.bind(state, -seat), func(m):
+		bot_busy = false
+		if game == state:
+			Net.send(_move, m))
 
 
 func _button(text: String, cb: Callable) -> void:
@@ -104,7 +121,7 @@ func _draw() -> void:
 			var t := _tex(p)
 			draw_texture_rect(t[0], r, false, t[1])
 		if i in targets:
-			if p.begins_with(game.color()):  # castling onto our own rook
+			if p[0] in game.side():  # castling onto our own rook
 				draw_arc(r.get_center(), TILE / 2.0 - 3, 0, TAU, 32, Color(0.1, 0.5, 1, 0.6), 4)
 			elif p != "" or (game.board[selected][1] == "P" and _diagonal(selected, i)):
 				draw_arc(r.get_center(), TILE / 2.0 - 3, 0, TAU, 32, Color(0, 0, 0, 0.3), 4)
@@ -120,6 +137,7 @@ func _draw_panel() -> void:
 	var font := ThemeDB.fallback_font
 	var y := 40.0
 	draw_string(font, Vector2(PANEL_X, y), "Superchess", HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
+	draw_string(font, Vector2(PANEL_X + 150, y), MODE_NAMES[game.mode], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	y += 34
 	for i in SuperchessRules.COLORS.size():
 		var c: String = SuperchessRules.COLORS[i]
@@ -132,12 +150,13 @@ func _draw_panel() -> void:
 			line += " - king out"
 		elif game.in_check(c):
 			line += " - check!"
-		var col := Color.WHITE if i == game.turn and not game.result else Color(1, 1, 1, 0.55)
-		draw_string(font, Vector2(PANEL_X + 32, y), ("> " if i == game.turn and not game.result else "") + line,
+		var moving: bool = c in game.side() and not game.result
+		var col := Color.WHITE if moving else Color(1, 1, 1, 0.55)
+		draw_string(font, Vector2(PANEL_X + 32, y), ("> " if moving else "") + line,
 			HORIZONTAL_ALIGNMENT_LEFT, 260, 17, col)
 		y += 30
 	y += 10
-	var status := game.result if game.result else "%s to move" % SuperchessRules.NAMES[game.color()]
+	var status := game.result if game.result else "%s to move" % (["Light", "Dark"][game.turn] if game.mode == "2p" else SuperchessRules.NAMES[game.color()])
 	if draw_offer != -1 and not game.result:
 		status += "\n%s offers a draw (%d/%d agree)" % [Net.name_of(draw_offer), draw_yes.size(), _players().size()]
 	for line in (status + "\n" + "\n".join(log_lines.slice(-5))).split("\n"):
@@ -155,7 +174,7 @@ func _square_at(pos: Vector2) -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and game.result:
+	if event.is_action_pressed("ui_cancel") and (game.result or Net.watching_bots()):
 		Net.end_game()
 	elif event is InputEventMouseMotion and dragging:
 		drag_pos = make_input_local(event).position
@@ -172,7 +191,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if sq in targets:
 			Net.send(_move, Vector2i(selected, sq))
-		elif sq != -1 and game.board[sq].begins_with(game.color()) and Net.seats[game.turn] == _me():
+		elif sq != -1 and game.board[sq] != "" and game.board[sq][0] in game.side() and Net.seats[game.turn] == _me():
 			selected = sq
 			targets = game.legal_moves().filter(func(m): return m.x == sq).map(func(m): return m.y)
 			dragging = true
@@ -197,7 +216,7 @@ func _after(new_state: SuperchessRules) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _move(m: Vector2i) -> void:
-	if game.result or multiplayer.get_remote_sender_id() != Net.seats[game.turn] or m not in game.legal_moves():
+	if game.result or not Net.may_act(Net.seats[game.turn], multiplayer.get_remote_sender_id()) or m not in game.legal_moves():
 		return
 	last_move = m
 	_after(game.play(m))
@@ -205,7 +224,7 @@ func _move(m: Vector2i) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _resign() -> void:
-	if game.result or multiplayer.get_remote_sender_id() != Net.seats[game.turn] or game.king_of(game.color()) == -1:
+	if game.result or multiplayer.get_remote_sender_id() != Net.seats[game.turn] or not game.side().any(func(c): return game.king_of(c) != -1):
 		return
 	_after(game.resign())
 
