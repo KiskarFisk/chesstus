@@ -9,6 +9,7 @@ Everything is drawn at runtime, except the chess pieces.
 | Square | Game  | Status |
 |--------|-------|--------|
 | **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported |
+| **S**  | Superchess | 4 armies, 2 teams (White + Yellow vs Black + Red), 2-4 players. [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 
 ## Controls
 
@@ -17,7 +18,7 @@ Everything is drawn at runtime, except the chess pieces.
 
 ## Multiplayer
 
-Two players, peer-to-peer over ENet on **UDP port 7777**. Set your name in the hub's top bar (it's remembered).
+Up to 4 players (White, Black, Yellow and Red kings), peer-to-peer over ENet on **UDP port 7777**. Set your name in the hub's top bar (it's remembered). Players not seated in a game watch it; anyone joining mid-game waits in the hub.
 
 1. One player clicks **Host** in the hub's top-left corner.
 2. The other enters the host's IP address and clicks **Join**.
@@ -37,7 +38,9 @@ Without a connection, chess is two players on one screen.
 | `net.gd` | `Net` autoload: host/join, scene changes for both players, hub king positions |
 | `chess_rules.gd` | `ChessRules`: chess position and legal move generation, no UI |
 | `chess.gd` / `chess.tscn` | Chess board UI. Moves are RPCs that each side checks for turn and legality |
+| `superchess_rules.gd` / `superchess.gd` / `superchess.tscn` | Superchess rules (`SuperchessRules`) and board UI |
 | `test_chess_rules.gd` | Checks move generation against known move counts for standard test positions (perft) |
+| `test_superchess_rules.gd` | Rule checks for Superchess (point pawns, hole, castling swap, partner check, mates, promotion, en passant) |
 | `pieces/` | Chess piece SVGs |
 
 ## Adding a game

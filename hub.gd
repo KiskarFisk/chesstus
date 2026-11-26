@@ -2,16 +2,31 @@ extends Node2D
 
 const TILE := 64
 const STEP_TIME := 0.15
+const LABEL_RANGE := 5  # a game's name shows while any king is this many squares away or closer
+const LABEL_FADE := 0.35  # seconds to fade a name fully in or out
+# Key: the game's unique character in hub_map.gd. letter: what's drawn on its square, usually the
+# family it belongs to (Superchess is a chess game, so C). seats: one per side; teams: seats playing together.
 const GAMES := {
-	"C": {"name": "Chess", "scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95), "seats": ["White", "Black"]},
+	"C": {"name": "Chess", "letter": "C", "scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95),
+		"seats": ["White", "Black"], "teams": [[0], [1]]},
+	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),
+		"seats": ["White", "Black", "Yellow", "Red"], "teams": [[0, 2], [1, 3]]},
 }
 
-# Live copy of the layout; static so map editor changes survive scene reloads this session.
+# Checkerboard colors per area, painted with the map editor's Theme brush. Key = letter in THEME_MAP.
+const THEMES := {
+	".": {"name": "Classic", "light": Color("#eed8b5"), "dark": Color("#b48963")},
+	"s": {"name": "Shogi", "light": Color("#ecc77f"), "dark": Color("#d9ab5c")},  # kaya wood
+}
+
+# Live copies of the layout; static so map editor changes survive scene reloads this session.
 static var map: Array = preload("res://hub_map.gd").MAP.duplicate()
+static var theme_map: Array = preload("res://hub_map.gd").THEME_MAP.duplicate()
 
 var kings := {}  # peer id -> Sprite2D, mirrors Net.cells
 var moving := false
 var editing := false  # set by the map editor
+var label_alpha := {}  # game square (Vector2i) -> name opacity 0..1
 var status_label: Label
 var vote_layer := CanvasLayer.new()
 
@@ -56,9 +71,10 @@ func _build_net_ui() -> void:
 	add_child(layer)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	status_label.text = Net.status
 	_sync_kings()
+	_fade_labels(delta)
 	var me := multiplayer.get_unique_id()
 	if editing or moving or not Net.proposal.is_empty() or not Net.cells.has(me) \
 			or get_viewport().gui_get_focus_owner() is LineEdit:
@@ -156,7 +172,6 @@ func _sync_kings() -> void:
 		var cell: Vector2i = Net.cells[id]
 		if not kings.has(id):
 			var k := Sprite2D.new()
-			k.texture = load("res://pieces/%sK.svg" % Net.color_of(id))
 			k.position = px(cell)
 			k.set_meta("cell", cell)
 			add_child(k)
@@ -179,6 +194,9 @@ func _sync_kings() -> void:
 			kings[id].set_meta("cell", cell)
 			create_tween().tween_property(kings[id], "position", px(cell), STEP_TIME)
 		kings[id].get_node("Name").text = Net.name_of(id)
+		var color := Net.color_of(id)  # refreshed each frame: colors can arrive after the king
+		kings[id].texture = load("res://pieces/%sK.svg" % color.piece)
+		kings[id].self_modulate = color.tint  # self_: don't tint the name label
 
 
 static func tile(c: Vector2i) -> String:
@@ -201,6 +219,24 @@ static func px(c: Vector2i) -> Vector2:
 	return Vector2(c) * TILE + Vector2.ONE * TILE / 2
 
 
+## Fade each game's name toward visible while any king is within LABEL_RANGE (king-move distance).
+func _fade_labels(delta: float) -> void:
+	var changed := false
+	for y in map.size():
+		for x in map[y].length():
+			if map[y][x] not in GAMES:
+				continue
+			var c := Vector2i(x, y)
+			var near := Net.cells.values().any(func(k): return maxi(absi(k.x - x), absi(k.y - y)) <= LABEL_RANGE)
+			var a: float = label_alpha.get(c, 0.0)
+			var to := move_toward(a, 1.0 if near else 0.0, delta / LABEL_FADE)
+			if to != a:
+				label_alpha[c] = to
+				changed = true
+	if changed:
+		queue_redraw()
+
+
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	for y in map.size():
@@ -209,12 +245,31 @@ func _draw() -> void:
 			if ch == " ":
 				continue
 			var r := Rect2(x * TILE, y * TILE, TILE, TILE)
-			var col := Color.BLACK if ch == "#" else (Color("#eed8b5") if (x + y) % 2 == 0 else Color("#b48963"))
+			var theme: Dictionary = THEMES.get(theme_map[y][x], THEMES["."])
+			var col: Color = Color.BLACK if ch == "#" else (theme.light if (x + y) % 2 == 0 else theme.dark)
 			draw_rect(r, col)
 			if editing and ch == "#":  # tell walls apart from empty space
 				draw_rect(r.grow(-1), Color(0.35, 0.35, 0.35), false, 2)
 			elif ch in GAMES:
 				draw_rect(r.grow(-6), GAMES[ch].color)
-				draw_string(font, r.position + Vector2(0, TILE * 0.68), ch, HORIZONTAL_ALIGNMENT_CENTER, TILE, 32)
+				draw_string(font, r.position + Vector2(0, TILE * 0.68), GAMES[ch].letter, HORIZONTAL_ALIGNMENT_CENTER, TILE, 32)
 			elif editing and ch == "K":
 				draw_string(font, r.position + Vector2(0, TILE * 0.68), "K", HORIZONTAL_ALIGNMENT_CENTER, TILE, 32, Color(0, 0.6, 0, 0.8))
+	# Game names under their squares, drawn after the tiles so neighbouring squares don't cover them.
+	# Names that would overlap (games next to each other) stack downwards.
+	var taken: Array[Rect2] = []
+	var cells := label_alpha.keys()
+	cells.sort_custom(func(a, b): return a.y < b.y or a.y == b.y and a.x < b.x)
+	for c in cells:
+		var a: float = label_alpha[c]
+		if a <= 0.0 or tile(c) not in GAMES:  # skip faded out, or a square the map editor removed
+			continue
+		var text: String = GAMES[tile(c)].name
+		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
+		var box := Rect2(Vector2(c.x + 0.5, c.y + 1) * TILE - Vector2(size.x / 2 + 4, 0), size + Vector2(8, 2))
+		while taken.any(func(t): return t.intersects(box)):
+			box.position.y += box.size.y
+		taken.append(box)
+		var pos := box.position + Vector2(4, 20)
+		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, 6, Color(0, 0, 0, a))
+		draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1, 1, 1, a))

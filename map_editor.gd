@@ -7,14 +7,18 @@ const SAVE_PATH := "res://hub_map.gd"
 const PAN_SPEED := 600.0
 const EMPTY := " "
 const GAME := "game"  # brush id; the actual letter is picked from game_menu
+const THEME := "theme"  # brush id; paints theme_key onto THEME_MAP instead of tiles
+const DEFAULT_THEME := "."
 
 var active := false
 var brush := "#"
+var theme_key := DEFAULT_THEME
 var cam := Camera2D.new()
 var ui := CanvasLayer.new()
 var info := Label.new()
 var game_menu := PopupMenu.new()
 var game_cell: Vector2i  # where the game picked from game_menu goes
+var theme_menu := PopupMenu.new()
 
 @onready var hub: Hub = get_parent()
 
@@ -30,6 +34,9 @@ func _ready() -> void:
 	var brushes := {"#": "Wall", ".": "Floor", "K": "Spawn", GAME: "Game"}
 	for k in brushes:
 		row.add_child(_button(brushes[k], _set_brush.bind(k)))
+	var theme_btn := _button("Theme", func(): pass)
+	theme_btn.pressed.connect(func(): theme_menu.popup(Rect2i(Vector2i(theme_btn.get_screen_position()) + Vector2i(0, 32), Vector2i.ZERO)))
+	row.add_child(theme_btn)
 	row.add_child(_button("Save", _save))
 	col.add_child(row)
 	ui.add_child(panel)
@@ -37,6 +44,12 @@ func _ready() -> void:
 		game_menu.add_item("%s: %s" % [k, Hub.GAMES[k].name])
 	game_menu.id_pressed.connect(func(i): _paint(game_cell, Hub.GAMES.keys()[i]))
 	ui.add_child(game_menu)
+	for k in Hub.THEMES:
+		theme_menu.add_item(Hub.THEMES[k].name)
+	theme_menu.id_pressed.connect(func(i):
+		theme_key = Hub.THEMES.keys()[i]
+		_set_brush(THEME))
+	ui.add_child(theme_menu)
 	ui.visible = false
 	add_child(ui)
 	_info()
@@ -56,8 +69,13 @@ func _set_brush(k: String) -> void:
 
 
 func _info(msg := "") -> void:
+	var label := brush
+	if brush == GAME:
+		label = "Game"
+	elif brush == THEME:
+		label = "Theme: " + Hub.THEMES[theme_key].name
 	info.text = "MAP EDITOR (F1 to exit)  Brush: %s  Size: %dx%d\nLMB paint (outside the board to grow it), RMB erase, arrows pan, wheel zoom\n%s" \
-		% [brush.capitalize() if brush == GAME else brush, Hub.map[0].length(), Hub.map.size(), msg]
+		% [label, Hub.map[0].length(), Hub.map.size(), msg]
 
 
 func _process(delta: float) -> void:
@@ -84,7 +102,9 @@ func _unhandled_input(e: InputEvent) -> void:
 		if e.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			_paint(c, EMPTY)
 		elif e.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			if brush != GAME:
+			if brush == THEME:
+				_paint_theme(c)
+			elif brush != GAME:
 				_paint(c, brush)
 			elif pressed:  # one game per click, not while dragging
 				game_cell = c
@@ -118,22 +138,40 @@ func _paint(c: Vector2i, ch: String) -> void:
 	var right := maxi(0, c.x - (w - 1))
 	var bottom := maxi(0, c.y - (h - 1))
 	if left or top or right or bottom:
-		for i in h:
-			m[i] = EMPTY.repeat(left) + m[i] + EMPTY.repeat(right)
-		w += left + right
-		for i in top:
-			m.insert(0, EMPTY.repeat(w))
-		for i in bottom:
-			m.append(EMPTY.repeat(w))
+		for grid in [[m, EMPTY], [Hub.theme_map, DEFAULT_THEME]]:  # keep both grids the same size
+			var g: Array = grid[0]
+			var fill: String = grid[1]
+			for i in h:
+				g[i] = fill.repeat(left) + g[i] + fill.repeat(right)
+			for i in top:
+				g.insert(0, fill.repeat(w + left + right))
+			for i in bottom:
+				g.append(fill.repeat(w + left + right))
 		c += Vector2i(left, top)
 		_shift(Vector2i(left, top))
 	if m[c.y][c.x] == ch:
 		return
-	m[c.y] = m[c.y].substr(0, c.x) + ch + m[c.y].substr(c.x + 1)
+	_set_char(m, c, ch)
 	if ch == EMPTY:
+		_set_char(Hub.theme_map, c, DEFAULT_THEME)
 		_trim()
 	hub.queue_redraw()
 	_info("Unsaved changes")
+
+
+## Recolor an existing square; doesn't grow the board or touch the tile.
+func _paint_theme(c: Vector2i) -> void:
+	var m := Hub.map
+	if c.x < 0 or c.y < 0 or c.y >= m.size() or c.x >= m[0].length() or m[c.y][c.x] == EMPTY \
+			or Hub.theme_map[c.y][c.x] == theme_key:
+		return
+	_set_char(Hub.theme_map, c, theme_key)
+	hub.queue_redraw()
+	_info("Unsaved changes")
+
+
+static func _set_char(grid: Array, c: Vector2i, ch: String) -> void:
+	grid[c.y] = grid[c.y].substr(0, c.x) + ch + grid[c.y].substr(c.x + 1)
 
 
 ## Drop empty rows/columns from the edges.
@@ -148,9 +186,10 @@ func _trim() -> void:
 				hi = hi.max(Vector2i(x, y))
 	if hi.x < 0:
 		return  # everything erased; keep the size so there's somewhere to paint
-	var rows := m.slice(lo.y, hi.y + 1).map(func(r): return r.substr(lo.x, hi.x - lo.x + 1))
-	m.clear()
-	m.append_array(rows)
+	for g in [m, Hub.theme_map]:
+		var rows: Array = g.slice(lo.y, hi.y + 1).map(func(r): return r.substr(lo.x, hi.x - lo.x + 1))
+		g.clear()
+		g.append_array(rows)
 	_shift(-lo)
 
 
@@ -175,8 +214,10 @@ func _save() -> void:
 	if f == null:
 		_info("Save failed: %s" % error_string(FileAccess.get_open_error()))
 		return
-	var rows := "".join(Hub.map.map(func(r): return '\t"%s",\n' % r))
+	var rows := func(g: Array) -> String: return "".join(g.map(func(r): return '\t"%s",\n' % r))
 	f.store_string("# Hub layout. Rewritten by the in-game map editor (F1 in the hub, editor runs only).\n" \
 		+ "# '#' wall, '.' floor, ' ' empty, 'K' spawn point, letters = game squares (see GAMES in hub.gd)\n" \
-		+ "const MAP := [\n" + rows + "]\n")
+		+ "# THEME_MAP: one theme letter per square, same size as MAP (see THEMES in hub.gd, '.' = classic)\n" \
+		+ "const MAP := [\n" + rows.call(Hub.map) + "]\n" \
+		+ "const THEME_MAP := [\n" + rows.call(Hub.theme_map) + "]\n")
 	_info("Saved to " + SAVE_PATH)
