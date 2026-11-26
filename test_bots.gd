@@ -30,6 +30,16 @@ func _init() -> void:
 	_check("medium superchess opening move in %d ms (< 3000)" % ms, ms < 3000)
 	_check("easy superchess returns a legal move", B.superchess_move(S.start(), 1) in S.start().legal_moves())
 
+	const G := preload("res://shogi_rules.gd")
+	var rook := G.from_sfen("4k/5/r4/5/R3K b - 1")
+	_check("medium shogi takes a free rook", B.shogi_move(rook, 2) == Vector3i(20, 10, 0))
+	_check("easy shogi returns a legal move", B.shogi_move(G.from_sfen(G.START), 1) in G.from_sfen(G.START).moves())
+	for start in [G.START, G.MINI]:
+		t = Time.get_ticks_msec()
+		B.shogi_move(G.from_sfen(start), 2)
+		ms = Time.get_ticks_msec() - t
+		_check("medium shogi opening move on %dx%d in %d ms (< 3000)" % [G.from_sfen(start).n, G.from_sfen(start).n, ms], ms < 3000)
+
 	print("FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
 

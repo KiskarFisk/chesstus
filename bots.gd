@@ -112,6 +112,67 @@ static func _superchess_eval(s: SuperchessRules, me: String) -> float:
 	return score
 
 
+# --- Shogi ---
+
+const SHOGI_VALUE := {"P": 100, "L": 300, "N": 350, "S": 500, "G": 550, "B": 800, "R": 1000, "K": 0,
+	"+P": 550, "+L": 550, "+N": 550, "+S": 550, "+B": 1050, "+R": 1250}
+
+
+## Medium searches 3 plies on Minishogi, 2 on the full board (drops make shogi's branching much wider).
+static func shogi_move(s: ShogiRules, level: int) -> Vector3i:
+	var moves := s.moves()
+	moves.shuffle()
+	var victim := func(m): return SHOGI_VALUE[s.board[m.y].substr(1)] if s.board[m.y] != "" else -1
+	if level <= 1:
+		var captures := moves.filter(func(m): return victim.call(m) >= 0)
+		if not captures.is_empty() and randf() < 0.7:
+			captures.sort_custom(func(a, b): return victim.call(a) > victim.call(b))
+			return captures[0]
+		return moves[0]
+	_shogi_order(s, moves)
+	var depth := 2 if s.n <= 5 else 1
+	var best := moves[0]
+	var alpha := -MATE * 2
+	for m in moves:
+		var score := -_shogi_negamax(s.play(m), depth, -MATE * 2, -alpha)
+		if score > alpha:
+			alpha = score
+			best = m
+	return best
+
+
+static func _shogi_negamax(s: ShogiRules, depth: int, alpha: int, beta: int) -> int:
+	if depth == 0:
+		return _shogi_eval(s) * (1 if s.turn == "b" else -1)
+	var moves := s.moves()
+	if moves.is_empty():
+		return -(MATE + depth)  # no legal move loses in shogi, check or not
+	_shogi_order(s, moves)
+	for m in moves:
+		alpha = maxi(alpha, -_shogi_negamax(s.play(m), depth - 1, -beta, -alpha))
+		if alpha >= beta:
+			break
+	return alpha
+
+
+## Captures first (biggest victim first), then promotions.
+static func _shogi_order(s: ShogiRules, moves: Array[Vector3i]) -> void:
+	var key := func(m): return (SHOGI_VALUE[s.board[m.y].substr(1)] if s.board[m.y] != "" else 0) + m.z * 50
+	moves.sort_custom(func(a, b): return key.call(a) > key.call(b))
+
+
+## Material on the board plus pieces in hand (worth a bit more: they can drop anywhere), from Sente's side.
+static func _shogi_eval(s: ShogiRules) -> int:
+	var score := 0
+	for p in s.board:
+		if p != "":
+			score += SHOGI_VALUE[p.substr(1)] * (1 if p[0] == "b" else -1)
+	for side in s.hands:
+		for k in s.hands[side]:
+			score += SHOGI_VALUE[k] * 11 / 10 * s.hands[side][k] * (1 if side == "b" else -1)
+	return score
+
+
 static func _easy(moves: Array[Vector2i], victim: Callable) -> Vector2i:
 	var captures := moves.filter(func(m): return victim.call(m) >= 0)
 	if not captures.is_empty() and randf() < 0.7:

@@ -11,6 +11,10 @@ const GAMES := {
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
 	"B": {"name": "Baby Chess", "letter": "C", "scene": "res://babychess.tscn", "color": Color(0.35, 0.75, 0.5),
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
+	"J": {"name": "Shogi", "letter": "S", "scene": "res://shogi.tscn", "color": Color(0.85, 0.5, 0.15),
+		"seats": ["Sente", "Gote"], "teams": [[0], [1]]},
+	"M": {"name": "Minishogi", "letter": "S", "scene": "res://minishogi.tscn", "color": Color(0.8, 0.3, 0.2),
+		"seats": ["Sente", "Gote"], "teams": [[0], [1]]},
 	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
 	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),
