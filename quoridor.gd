@@ -58,7 +58,9 @@ func _refresh() -> void:
 		_button("Back to hub", func(): Net.end_game())
 	elif _side_of(multiplayer.get_unique_id()) not in [-1] + game.resigned:
 		_button("Resign", func(): Net.send(_resign))
-	targets = game.steps() if _mine() else []
+	targets.clear()
+	if _mine():
+		targets = game.steps()
 	hover = NO_WALL
 	queue_redraw()
 	_maybe_bot()
