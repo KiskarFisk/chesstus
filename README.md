@@ -31,7 +31,9 @@ Without a connection, chess is two players on one screen.
 
 | File | Purpose |
 |------|---------|
-| `hub.gd` / `hub.tscn` | The hub board. Edit `MAP` to change the layout (`#` wall, `.` floor, `K` spawn, letters = games) and `GAMES` to register a game square |
+| `hub.gd` / `hub.tscn` | The hub board. `GAMES` registers game squares |
+| `hub_map.gd` | Hub layout (`#` wall, `.` floor, `K` spawn, letters = games). Edit by hand or with the map editor |
+| `map_editor.gd` | In-game map editor: press **F1** in the hub. Only available when running from the Godot editor, offline |
 | `net.gd` | `Net` autoload: host/join, scene changes for both players, hub king positions |
 | `chess_rules.gd` | `ChessRules`: chess position and legal move generation, no UI |
 | `chess.gd` / `chess.tscn` | Chess board UI. Moves are RPCs that each side checks for turn and legality |
@@ -42,7 +44,7 @@ Without a connection, chess is two players on one screen.
 
 1. Make the scene, for example `checkers.tscn`.
 2. Add its path to `SCENES` in `net.gd`.
-3. Add an entry to `GAMES` in `hub.gd` and put its letter somewhere in `MAP`.
+3. Add an entry to `GAMES` in `hub.gd`, then place its letter with the map editor (it appears as a brush) or by hand in `hub_map.gd`.
 
 Send moves through an `@rpc("any_peer", "call_local", "reliable")` function that validates the sender and the move, as `chess.gd` does.
 

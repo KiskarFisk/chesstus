@@ -2,30 +2,23 @@ extends Node2D
 
 const TILE := 64
 const STEP_TIME := 0.15
-# '#' wall, '.' floor, 'K' spawn point, any key of GAMES = game square
-const MAP := [
-	"############",
-	"#K........K#",
-	"#..##......#",
-	"#..#....C..#",
-	"#..........#",
-	"#....K.....#",
-	"#......##..#",
-	"#.......#..#",
-	"#K.........#",
-	"############",
-]
 const GAMES := {
 	"C": {"scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95)},
 }
 
+# Live copy of the layout; static so map editor changes survive scene reloads this session.
+static var map: Array = preload("res://hub_map.gd").MAP.duplicate()
+
 var kings := {}  # peer id -> Sprite2D, mirrors Net.cells
 var moving := false
+var editing := false  # set by the map editor
 var status_label: Label
 
 
 func _ready() -> void:
 	_build_net_ui()
+	if OS.has_feature("editor"):  # only when run from the Godot editor, never in exports
+		add_child(load("res://map_editor.gd").new())
 
 
 func _build_net_ui() -> void:
@@ -55,7 +48,10 @@ func _process(_delta: float) -> void:
 	status_label.text = Net.status
 	_sync_kings()
 	var me := multiplayer.get_unique_id()
-	if moving or not Net.cells.has(me) or get_viewport().gui_get_focus_owner() is LineEdit:
+	if editing or moving or not Net.cells.has(me) or get_viewport().gui_get_focus_owner() is LineEdit:
+		return
+	# One step per key press. Diagonal = hold one arrow, press the other.
+	if not ["ui_left", "ui_right", "ui_up", "ui_down"].any(Input.is_action_just_pressed):
 		return
 	var dir := Vector2i(
 		int(Input.is_action_pressed("ui_right")) - int(Input.is_action_pressed("ui_left")),
@@ -93,6 +89,8 @@ func _sync_kings() -> void:
 				var cam := Camera2D.new()
 				cam.position_smoothing_enabled = true
 				k.add_child(cam)
+				cam.make_current()  # the map editor's camera may have been added first
+				cam.reset_smoothing()
 			kings[id] = k
 		elif kings[id].get_meta("cell") != cell:
 			kings[id].set_meta("cell", cell)
@@ -100,16 +98,17 @@ func _sync_kings() -> void:
 
 
 static func tile(c: Vector2i) -> String:
-	if c.y < 0 or c.y >= MAP.size() or c.x < 0 or c.x >= MAP[c.y].length():
+	if c.y < 0 or c.y >= map.size() or c.x < 0 or c.x >= map[c.y].length():
 		return "#"
-	return MAP[c.y][c.x]
+	var ch: String = map[c.y][c.x]
+	return "#" if ch == " " else ch  # empty space blocks like a wall
 
 
 static func spawns() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
-	for y in MAP.size():
-		for x in MAP[y].length():
-			if MAP[y][x] == "K":
+	for y in map.size():
+		for x in map[y].length():
+			if map[y][x] == "K":
 				out.append(Vector2i(x, y))
 	return out
 
@@ -120,12 +119,18 @@ static func px(c: Vector2i) -> Vector2:
 
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	for y in MAP.size():
-		for x in MAP[y].length():
-			var ch: String = MAP[y][x]
+	for y in map.size():
+		for x in map[y].length():
+			var ch: String = map[y][x]
+			if ch == " ":
+				continue
 			var r := Rect2(x * TILE, y * TILE, TILE, TILE)
 			var col := Color.BLACK if ch == "#" else (Color("#eed8b5") if (x + y) % 2 == 0 else Color("#b48963"))
 			draw_rect(r, col)
-			if ch in GAMES:
+			if editing and ch == "#":  # tell walls apart from empty space
+				draw_rect(r.grow(-1), Color(0.35, 0.35, 0.35), false, 2)
+			elif ch in GAMES:
 				draw_rect(r.grow(-6), GAMES[ch].color)
 				draw_string(font, r.position + Vector2(0, TILE * 0.68), ch, HORIZONTAL_ALIGNMENT_CENTER, TILE, 32)
+			elif editing and ch == "K":
+				draw_string(font, r.position + Vector2(0, TILE * 0.68), "K", HORIZONTAL_ALIGNMENT_CENTER, TILE, 32, Color(0, 0.6, 0, 0.8))
