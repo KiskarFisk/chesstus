@@ -49,17 +49,18 @@ static func _order(s: ChessRules, moves: Array[Vector2i]) -> void:
 ## Material plus small nudges (advanced pawns, central minor pieces), from white's side.
 static func _chess_eval(s: ChessRules) -> int:
 	var score := 0
-	for i in 64:
+	var n := s.n
+	for i in n * n:
 		var p: String = s.board[i]
 		if p == "":
 			continue
 		var v: int = VALUE[p[1]]
-		var x := i % 8
-		var y := i / 8
+		var x := i % n
+		var y := i / n
 		if p[1] == "P":
-			v += (6 - y if p[0] == "w" else y - 1) * 8
+			v += (n - 2 - y if p[0] == "w" else y - 1) * 8
 		elif p[1] in "NB":
-			v -= (absi(2 * x - 7) + absi(2 * y - 7)) * 3
+			v -= (absi(2 * x - n + 1) + absi(2 * y - n + 1)) * 3
 		score += v if p[0] == "w" else -v
 	return score
 

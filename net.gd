@@ -4,7 +4,7 @@ extends Node
 
 const PORT := 7777
 const MAX_PLAYERS := 4
-const SCENES := ["res://hub.tscn", "res://chess.tscn", "res://superchess.tscn"]
+const SCENES := ["res://hub.tscn", "res://chess.tscn", "res://babychess.tscn", "res://superchess.tscn"]
 const HUB := "res://hub.tscn"
 const SETTINGS := "user://settings.cfg"
 const MAX_NAME := 16
@@ -98,15 +98,16 @@ func may_act(seat_id: int, sender: int) -> bool:
 
 
 ## Run work() on a worker thread after BOT_DELAY, then done(result) on the main thread.
-## done is skipped if its object was freed meanwhile (the game ended).
-func think(work: Callable, done: Callable) -> void:
+## done is skipped if owner (the game scene) was freed meanwhile: the game ended while the bot thought.
+## (A lambda's Callable stays "valid" after its object is freed, so owner is checked instead.)
+func think(owner: Node, work: Callable, done: Callable) -> void:
 	await get_tree().create_timer(BOT_DELAY).timeout
 	var box := []  # lambdas capture locals by value; an Array is shared
 	var task := WorkerThreadPool.add_task(func(): box.append(work.call()))
 	while not WorkerThreadPool.is_task_completed(task):
 		await get_tree().process_frame
 	WorkerThreadPool.wait_for_task_completion(task)
-	if done.is_valid():
+	if is_instance_valid(owner) and owner.is_inside_tree():
 		done.call(box[0])
 
 

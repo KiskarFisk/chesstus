@@ -6,6 +6,7 @@ const TILE := 38
 const LIGHT := Color("#eed8b5")
 const DARK := Color("#b48963")
 const PANEL_X := 16.0
+const FRAME := 16  # wooden border around the board; black beyond it
 const MODE_NAMES := {"2p": "2 players", "teams": "Teams", "ffa": "Free for all"}
 
 var game := SuperchessRules.start(Net.game_mode if Net.game_mode in ["2p", "teams", "ffa"] else "teams")
@@ -83,7 +84,7 @@ func _maybe_bot() -> void:
 		return
 	bot_busy = true
 	var state := game
-	Net.think(Bots.superchess_move.bind(state, -seat), func(m):
+	Net.think(self, Bots.superchess_move.bind(state, -seat), func(m):
 		bot_busy = false
 		if game == state:
 			Net.send(_move, m))
@@ -99,6 +100,12 @@ func _button(text: String, cb: Callable) -> void:
 
 func _draw() -> void:
 	var o := _origin()
+	var box := StyleBoxFlat.new()  # rounded wooden border around the board's square
+	box.bg_color = Color("#4a3222")
+	box.border_color = Color("#6e4c33")
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(10)
+	draw_style_box(box, Rect2(o, Vector2.ONE * TILE * SuperchessRules.N).grow(FRAME))
 	var n := SuperchessRules.N
 	var checked := []
 	for c in SuperchessRules.COLORS:
@@ -153,14 +160,14 @@ func _draw_panel() -> void:
 		var moving: bool = c in game.side() and not game.result
 		var col := Color.WHITE if moving else Color(1, 1, 1, 0.55)
 		draw_string(font, Vector2(PANEL_X + 32, y), ("> " if moving else "") + line,
-			HORIZONTAL_ALIGNMENT_LEFT, 260, 17, col)
+			HORIZONTAL_ALIGNMENT_LEFT, 236, 17, col)
 		y += 30
 	y += 10
 	var status := game.result if game.result else "%s to move" % (["Light", "Dark"][game.turn] if game.mode == "2p" else SuperchessRules.NAMES[game.color()])
 	if draw_offer != -1 and not game.result:
 		status += "\n%s offers a draw (%d/%d agree)" % [Net.name_of(draw_offer), draw_yes.size(), _players().size()]
 	for line in (status + "\n" + "\n".join(log_lines.slice(-5))).split("\n"):
-		draw_string(font, Vector2(PANEL_X, y), line, HORIZONTAL_ALIGNMENT_LEFT, 280, 16)
+		draw_string(font, Vector2(PANEL_X, y), line, HORIZONTAL_ALIGNMENT_LEFT, 268, 16)
 		y += 22
 
 

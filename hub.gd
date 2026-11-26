@@ -9,6 +9,8 @@ const LABEL_FADE := 0.35  # seconds to fade a name fully in or out
 const GAMES := {
 	"C": {"name": "Chess", "letter": "C", "scene": "res://chess.tscn", "color": Color(0.25, 0.55, 0.95),
 		"seats": ["White", "Black"], "teams": [[0], [1]]},
+	"B": {"name": "Baby Chess", "letter": "C", "scene": "res://babychess.tscn", "color": Color(0.35, 0.75, 0.5),
+		"seats": ["White", "Black"], "teams": [[0], [1]]},
 	# modes: picked in the vote popup. armies: which seat plays each of the game's armies; players: the
 	# player count it's the default for. The game reads the mode id from Net.game_mode.
 	"S": {"name": "Superchess", "letter": "C", "scene": "res://superchess.tscn", "color": Color(0.7, 0.3, 0.75),

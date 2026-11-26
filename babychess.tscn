@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://chess.gd" id="1"]
+
+[node name="BabyChess" type="Node2D"]
+script = ExtResource("1")
+fen = "kqbnr/ppppp/5/PPPPP/RNBQK w Qk - 0 1"

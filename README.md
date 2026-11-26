@@ -9,6 +9,7 @@ Everything is drawn at runtime, except the chess pieces.
 | Square | Game  | Status |
 |--------|-------|--------|
 | **C**  | Chess | Playable: full rules except promotion choice (auto-queens) and automatic draws (50-move, repetition, insufficient material). Resign and draw offers supported |
+| **B**  | Baby Chess | 5x5, each side: 5 pawns, rook, knight, bishop, queen, king. Orthodox rules: castling (king two squares toward the rook), en passant, pawn double step when the path is clear. Shows as **C** on the hub |
 | **S**  | Superchess | 4 armies; modes picked in the vote popup: **2 players** (light vs dark, move any piece of either army; stalemate draws), **3 players** (one person runs the light team), **4 players (teams)** (White + Yellow vs Black + Red, clockwise), **Free for all** (house rule: mated armies leave, last king wins). [Official rules](https://www.chessvariants.com/multiplayer.dir/superchess.html); pawns auto-queen |
 
 ## Controls
@@ -38,8 +39,9 @@ Any seat can be a bot: pick **Bot (Easy)** or **Bot (Medium)** in the seat dropd
 | `hub_map.gd` | Hub layout (`#` wall, `.` floor, `K` spawn, letters = games). Edit by hand or with the map editor |
 | `map_editor.gd` | In-game map editor: press **F1** in the hub. Only available when running from the Godot editor, offline |
 | `net.gd` | `Net` autoload: host/join, scene changes for both players, hub king positions |
-| `chess_rules.gd` | `ChessRules`: chess position and legal move generation, no UI |
+| `chess_rules.gd` | `ChessRules`: chess position and legal move generation for any n x n board (chess, Baby Chess), no UI |
 | `chess.gd` / `chess.tscn` | Chess board UI. Moves are RPCs that each side checks for turn and legality |
+| `babychess.tscn` | Baby Chess: the chess scene with the 5x5 starting position (`ChessRules.BABY`) |
 | `superchess_rules.gd` / `superchess.gd` / `superchess.tscn` | Superchess rules (`SuperchessRules`) and board UI |
 | `test_chess_rules.gd` | Checks move generation against known move counts for standard test positions (perft) |
 | `test_superchess_rules.gd` | Rule checks for Superchess (point pawns, hole, castling swap, partner check, mates, promotion, en passant) |

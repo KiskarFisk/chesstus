@@ -3,11 +3,14 @@ extends Node2D
 ## The game can only be left once it's over (mate, stalemate, resignation, agreed draw).
 
 const TILE := 64
+const FRAME := 16  # wooden border around the board; black beyond it
 const SIDES := ["White", "Black"]
 const VALUES := {"Q": 9, "R": 5, "B": 3, "N": 3, "P": 1}
-const START_COUNT := {"Q": 1, "R": 2, "B": 2, "N": 2, "P": 8}
+## Starting position; the scene sets it (babychess.tscn uses ChessRules.BABY). Board size comes from it.
+@export var fen := ChessRules.START
 
-var game := ChessRules.from_fen(ChessRules.START)
+var game: ChessRules
+var start_count := {}  # piece type -> how many each side starts with, for the captured-pieces display
 var selected := -1
 var targets: Array = []
 var textures := {}
@@ -21,6 +24,9 @@ var bot_busy := false  # host: a bot is thinking
 
 
 func _ready() -> void:
+	game = ChessRules.from_fen(fen)
+	for t in VALUES:
+		start_count[t] = game.board.count("w" + t)
 	for c in "wb":
 		for p in "KQRBNP":
 			textures[c + p] = load("res://pieces/%s%s.svg" % [c, p])
@@ -32,7 +38,7 @@ func _ready() -> void:
 
 
 func _origin() -> Vector2:
-	return (get_viewport_rect().size - Vector2.ONE * TILE * 8) / 2
+	return (get_viewport_rect().size - Vector2.ONE * TILE * game.n) / 2
 
 
 func _turn() -> int:
@@ -55,7 +61,7 @@ func _status() -> String:
 		return result
 	var s := _who(_turn()) + (" to move - check!" if game.in_check() else " to move")
 	if draw_offer != -1:
-		s += "\n%s offers a draw" % SIDES[draw_offer]
+		s += "  -  %s offers a draw" % SIDES[draw_offer]  # one line: two would run off the top on 8x8
 	return s
 
 
@@ -84,7 +90,7 @@ func _maybe_bot() -> void:
 		return
 	bot_busy = true
 	var state := game
-	Net.think(Bots.chess_move.bind(state, -seat), func(m):
+	Net.think(self, Bots.chess_move.bind(state, -seat), func(m):
 		bot_busy = false
 		if game == state:  # nothing else happened meanwhile (e.g. a resignation)
 			Net.send(_move, m))
@@ -100,11 +106,12 @@ func _button(text: String, cb: Callable) -> void:
 
 func _draw() -> void:
 	var o := _origin()
-	buttons.position = o + Vector2(0, TILE * 8 + 12)
+	_draw_frame(Rect2(o, Vector2.ONE * TILE * game.n))
+	buttons.position = o + Vector2(0, TILE * game.n + FRAME + 10)
 	var check_sq := game.board.find(game.turn + "K") if game.in_check() and not result else -1
-	for i in 64:
-		var r := Rect2(o + Vector2(i % 8, i / 8) * TILE, Vector2.ONE * TILE)
-		draw_rect(r, Color("#eed8b5") if (i % 8 + i / 8) % 2 == 0 else Color("#b48963"))
+	for i in game.n * game.n:
+		var r := Rect2(o + Vector2(i % game.n, i / game.n) * TILE, Vector2.ONE * TILE)
+		draw_rect(r, Color("#eed8b5") if (i % game.n + game.n - 1 - i / game.n) % 2 == 1 else Color("#b48963"))  # a1 is always dark
 		if i == last_move.x or i == last_move.y:
 			draw_rect(r, Color(0.6, 0.8, 0.2, 0.45))
 		if i == selected:
@@ -126,32 +133,42 @@ func _draw() -> void:
 	_draw_captures(font, o)
 	var lines := _status().split("\n")
 	for i in lines.size():
-		draw_string(font, o + Vector2(0, -16 - 26 * (lines.size() - 1 - i)), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+		draw_string(font, o + Vector2(0, -FRAME - 10 - 26 * (lines.size() - 1 - i)), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+
+
+## Rounded wooden border hugging the board.
+func _draw_frame(board: Rect2) -> void:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("#4a3222")
+	box.border_color = Color("#6e4c33")
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(10)
+	draw_style_box(box, board.grow(FRAME))
 
 
 ## Right of the board: pieces each side has captured, plus "+N" for whoever is up material.
 ## Black's row sits by Black's side (top), White's by White's (bottom).
 func _draw_captures(font: Font, o: Vector2) -> void:
-	var material := {"w": 0, "b": 0}
+	var totals := {"w": 0, "b": 0}
 	for p in game.board:
 		if p != "" and p[1] != "K":
-			material[p[0]] += VALUES[p[1]]
+			totals[p[0]] += VALUES[p[1]]
 	for side in ["w", "b"]:
 		var enemy := "b" if side == "w" else "w"
 		var icons := []  # x offset, piece
 		var x := 0
-		for t in START_COUNT:
+		for t in start_count:
 			# ponytail: promotions can leave a type above its start count; clamp so it just shows nothing
-			var missing := maxi(0, START_COUNT[t] - game.board.count(enemy + t))
+			var missing := maxi(0, start_count[t] - game.board.count(enemy + t))
 			for i in missing:
 				icons.append([x, enemy + t])
 				x += 16
 			if missing:
 				x += 18
-		var lead: int = material[side] - material[enemy]
+		var lead: int = totals[side] - totals[enemy]
 		if icons.is_empty() and lead <= 0:
 			continue
-		var pos := o + Vector2(TILE * 8 + 16, TILE * 8 - 40 if side == "w" else 8)
+		var pos := o + Vector2(TILE * game.n + FRAME + 14, TILE * game.n - 40 if side == "w" else 8)
 		var width := x + (40 if lead > 0 else 0)
 		# backing strip so black pieces don't vanish into the black background
 		draw_rect(Rect2(pos - Vector2(6, 2), Vector2(width + 8, 36)), Color(0.62, 0.6, 0.57))
@@ -192,12 +209,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _square_at(pos: Vector2) -> int:
 	var c := Vector2i(((pos - _origin()) / TILE).floor())
-	return c.y * 8 + c.x if ChessRules._on(c) else -1
+	return c.y * game.n + c.x if game.on(c) else -1
 
 
 ## Target square holds an enemy piece, or is an en passant capture (pawn moving diagonally onto an empty square).
 func _is_capture(sq: int) -> bool:
-	return game.board[sq] != "" or (game.board[selected][1] == "P" and sq % 8 != selected % 8)
+	return game.board[sq] != "" or (game.board[selected][1] == "P" and sq % game.n != selected % game.n)
 
 
 # --- RPCs: sent with _send to everyone in the game. Senders are untrusted, so each checks seat, turn and state. ---
