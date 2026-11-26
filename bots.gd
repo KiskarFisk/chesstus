@@ -220,3 +220,53 @@ static func _easy(moves: Array[Vector2i], victim: Callable) -> Vector2i:
 		captures.sort_custom(func(a, b): return victim.call(a) > victim.call(b))
 		return captures[0]
 	return moves[0]
+
+
+# --- Cribbage ---
+
+## Easy picks at random. Medium discards to keep the best average hand over every possible starter, plus
+## or minus what the discards are worth in the crib; in play it takes the most points now and avoids leaving
+## the count on 5 or 21 (a ten makes 15 or 31). ponytail: no look-ahead at what the others hold.
+static func cribbage_move(s: CribbageRules, seat: int, level: int) -> Vector3i:
+	var moves := s.moves(seat)
+	moves.shuffle()
+	if level <= 1 or s.phase == CribbageRules.SHOW:
+		return moves[0]
+	var best := moves[0]
+	var best_score := -INF
+	for m in moves:
+		var sc := _cribbage_discard_value(s, m) if s.phase == CribbageRules.DISCARD else _cribbage_play_value(s, m)
+		if sc > best_score:
+			best_score = sc
+			best = m
+	return best
+
+
+static func _cribbage_discard_value(s: CribbageRules, m: Vector3i) -> float:
+	var hand: Array = s.hands[m.x]
+	var keep := hand.filter(func(c): return c != m.y and c != m.z)
+	var sum := 0
+	var n := 0
+	for c in 52:
+		if c not in hand:
+			sum += CribbageRules.total(CribbageRules.score_hand(keep, c))
+			n += 1
+	var tossed := [m.y] if m.z == -1 else [m.y, m.z]
+	var crib := 0.0  # rough: pairs, fifteens and fives help whoever owns the crib
+	if tossed.size() == 2:
+		crib += 2 if CribbageRules.rank(m.y) == CribbageRules.rank(m.z) else 0
+		crib += 2 if CribbageRules.value(m.y) + CribbageRules.value(m.z) == 15 else 0
+	for c in tossed:
+		crib += 1 if CribbageRules.rank(c) == 5 else 0
+	var mine := s.team(m.x) == s.team(s.dealer)
+	return float(sum) / n + (crib if mine else -crib)
+
+
+static func _cribbage_play_value(s: CribbageRules, m: Vector3i) -> float:
+	var t := s.team(m.x)
+	var after := s.play(m)
+	if after.winner == t:
+		return MATE
+	var gained := after.scores[t] - s.scores[t]
+	var left := s.count + CribbageRules.value(m.y)
+	return gained * 10 - (4 if left in [5, 21] else 0) + CribbageRules.value(m.y) * 0.1

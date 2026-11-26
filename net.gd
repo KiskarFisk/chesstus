@@ -5,7 +5,8 @@ extends Node
 const PORT := 7777
 const MAX_PLAYERS := 4
 const SCENES := ["res://hub.tscn", "res://chess.tscn", "res://babychess.tscn", "res://superchess.tscn",
-	"res://shogi.tscn", "res://minishogi.tscn", "res://quoridor.tscn", "res://crazyhouse.tscn"]
+	"res://shogi.tscn", "res://minishogi.tscn", "res://quoridor.tscn", "res://crazyhouse.tscn",
+	"res://cribbage.tscn"]
 const HUB := "res://hub.tscn"
 const SETTINGS := "user://settings.cfg"
 const MAX_NAME := 16
